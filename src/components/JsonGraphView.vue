@@ -1,0 +1,594 @@
+<script setup>
+import { ref, computed, onMounted, watch, inject } from 'vue'
+
+const searchQuery = inject('searchQuery', ref(''))
+
+const highlightText = (text, query) => {
+  if (!text) return ''
+  const str = String(text)
+  if (!query) return str
+  const escapedQuery = query.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&')
+  const regex = new RegExp(`(${escapedQuery})`, 'gi')
+  const escapedText = str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return escapedText.replace(regex, '<mark class="search-match">$1</mark>')
+}
+
+const props = defineProps({
+  parsedObj: { required: true },
+  hoveredPath: { type: Array, default: null }
+})
+
+const emit = defineEmits(['hover-path'])
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const CARD_ROW_H  = 26   // height of each row inside a card
+const CARD_PAD    = 10   // vertical padding inside card
+const CARD_KEY_W  = 130  // card key column width
+const CARD_VAL_W  = 200  // card value column width
+const CARD_GAP    = 22   // vertical gap between cards
+const BULLET_R    = 4.5  // bullet circle radius
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+const isPrimitive = (v) => v === null || typeof v !== 'object'
+
+const getValueType = (v) => {
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return 'array'
+  if (typeof v === 'object') return 'object'
+  return typeof v
+}
+
+const getPreview = (v) => {
+  if (v === null) return 'null'
+  if (Array.isArray(v)) return `[${v.length}]`
+  if (typeof v === 'object') return `{${Object.keys(v).length}}`
+  if (typeof v === 'string') return v.length > 30 ? v.slice(0, 30) + '…' : v
+  if (typeof v === 'boolean') return v ? 'true' : 'false'
+  return String(v)
+}
+
+const getValueColorClass = (type) => {
+  if (type === 'string') return 'tree-string'
+  if (type === 'number') return 'tree-number'
+  if (type === 'boolean') return 'tree-boolean'
+  if (type === 'null') return 'tree-null'
+  return ''
+}
+
+const getEntryPath = (node, entry) => {
+  const key = node.isArray ? Number(entry.key) : entry.key
+  return [...node.path, key]
+}
+
+// ─── Recursive Tree Layout Computation ────────────────────────────────────────
+const layout = computed(() => {
+  const obj = props.parsedObj
+  if (obj === null || typeof obj !== 'object') return null
+
+  const nodesMap = new Map()
+
+  // 1. Recursive function to construct nodes tree
+  const buildTreeNodes = (currentObj, path = [], key = "", parentId = null, parentRowIdx = null) => {
+    const isArray = Array.isArray(currentObj)
+    const entries = isArray
+      ? currentObj.map((v, i) => [String(i), v])
+      : Object.keys(currentObj).map(k => [k, currentObj[k]])
+
+    const nodeId = JSON.stringify(path)
+
+    const cardEntries = entries.map(([k, v], idx) => {
+      const isComplex = v !== null && typeof v === 'object'
+      const childPath = [...path, isArray ? Number(k) : k]
+      const childNodeId = isComplex ? JSON.stringify(childPath) : null
+
+      return {
+        key: k,
+        value: v,
+        isComplex,
+        preview: getPreview(v),
+        valueType: getValueType(v),
+        childNodeId,
+        rowIdx: idx
+      }
+    })
+
+    const height = CARD_PAD * 2 + Math.max(cardEntries.length, 1) * CARD_ROW_H
+    const width = CARD_KEY_W + CARD_VAL_W
+
+    const node = {
+      id: nodeId,
+      path,
+      key,
+      parentId,
+      parentRowIdx,
+      isArray,
+      entries: cardEntries,
+      width,
+      height,
+      x: 0,
+      y: 0,
+      childrenIds: cardEntries.filter(e => e.isComplex).map(e => e.childNodeId)
+    }
+
+    nodesMap.set(nodeId, node)
+
+    // Recursively build children
+    cardEntries.forEach(entry => {
+      if (entry.isComplex) {
+        const childPath = [...path, isArray ? Number(entry.key) : entry.key]
+        buildTreeNodes(entry.value, childPath, entry.key, nodeId, entry.rowIdx)
+      }
+    })
+
+    return node
+  }
+
+  // Build the root tree
+  const rootId = JSON.stringify([])
+  buildTreeNodes(obj, [], "")
+
+  // 2. Compute vertical footprint of each subtree (post-order height calculation)
+  const subtreeHeights = new Map()
+  const computeSubtreeHeights = (nodeId) => {
+    const node = nodesMap.get(nodeId)
+    if (!node) return 0
+
+    if (node.childrenIds.length === 0) {
+      subtreeHeights.set(nodeId, node.height)
+      return node.height
+    }
+
+    let childrenHeightSum = 0
+    node.childrenIds.forEach((childId, idx) => {
+      childrenHeightSum += computeSubtreeHeights(childId)
+      if (idx < node.childrenIds.length - 1) {
+        childrenHeightSum += CARD_GAP
+      }
+    })
+
+    const totalHeight = Math.max(node.height, childrenHeightSum)
+    subtreeHeights.set(nodeId, totalHeight)
+    return totalHeight
+  }
+  computeSubtreeHeights(rootId)
+
+  // 3. Assign positions recursively, centering parent nodes vertically
+  const assignCoords = (nodeId, startY, depth) => {
+    const node = nodesMap.get(nodeId)
+    if (!node) return
+
+    node.x = depth * (node.width + 120) // X position based on depth step
+
+    const nodeSubtreeH = subtreeHeights.get(nodeId)
+
+    if (node.childrenIds.length === 0) {
+      node.y = startY
+      return
+    }
+
+    // Center parent relative to subtree height span
+    node.y = startY + (nodeSubtreeH - node.height) / 2
+
+    // Center children relative to parent if parent card is taller
+    let currentChildY = startY
+    const totalChildrenH = node.childrenIds.reduce((sum, cid, idx) => {
+      return sum + subtreeHeights.get(cid) + (idx < node.childrenIds.length - 1 ? CARD_GAP : 0)
+    }, 0)
+
+    if (totalChildrenH < node.height) {
+      currentChildY = node.y + (node.height - totalChildrenH) / 2
+    }
+
+    node.childrenIds.forEach(childId => {
+      assignCoords(childId, currentChildY, depth + 1)
+      currentChildY += subtreeHeights.get(childId) + CARD_GAP
+    })
+  }
+  assignCoords(rootId, 0, 0)
+
+  // 4. Bounding box computation & coordinate normalization (shift everything to align with a 20px padding)
+  const allNodes = Array.from(nodesMap.values())
+  if (allNodes.length === 0) return null
+
+  const minX = Math.min(...allNodes.map(n => n.x))
+  const minY = Math.min(...allNodes.map(n => n.y))
+  const maxX = Math.max(...allNodes.map(n => n.x + n.width))
+  const maxY = Math.max(...allNodes.map(n => n.y + n.height))
+
+  allNodes.forEach(node => {
+    node.x = node.x - minX + 20
+    node.y = node.y - minY + 20
+  })
+
+  const wsW = maxX - minX + 40
+  const wsH = maxY - minY + 40
+
+  return { nodes: allNodes, wsW, wsH }
+})
+
+// ─── SVG connection lines computation ────────────────────────────────────────
+const curves = computed(() => {
+  if (!layout.value) return []
+  const { nodes } = layout.value
+
+  const connectionList = []
+  nodes.forEach(node => {
+    if (node.parentId !== null) {
+      const parentNode = nodes.find(n => n.id === node.parentId)
+      if (parentNode) {
+        const x1 = parentNode.x + parentNode.width
+        const y1 = parentNode.y + CARD_PAD + node.parentRowIdx * CARD_ROW_H + CARD_ROW_H / 2
+        const x2 = node.x
+        const y2 = node.y + node.height / 2
+        const cx = (x1 + x2) / 2
+
+        connectionList.push({
+          id: node.id,
+          d: `M ${x1} ${y1} C ${cx} ${y1} ${cx} ${y2} ${x2} ${y2}`,
+          x1, y1, x2, y2
+        })
+      }
+    }
+  })
+  return connectionList
+})
+
+// ─── Pan / Zoom (Adapted for smoother interaction) ──────────────────────────
+const containerRef = ref(null)
+const tx = ref(60)
+const ty = ref(60)
+const scale = ref(1)
+const isPanning = ref(false)
+const panStartX = ref(0)
+const panStartY = ref(0)
+const originX = ref(0)
+const originY = ref(0)
+
+const startPan = (e) => {
+  if (e.button !== 0) return
+  isPanning.value = true
+  panStartX.value = e.clientX
+  panStartY.value = e.clientY
+  originX.value = tx.value
+  originY.value = ty.value
+}
+const doPan = (e) => {
+  if (!isPanning.value) return
+  tx.value = originX.value + (e.clientX - panStartX.value)
+  ty.value = originY.value + (e.clientY - panStartY.value)
+}
+const stopPan = () => { isPanning.value = false }
+
+const doZoom = (e) => {
+  e.preventDefault()
+  // Smooth zoom speed (slower factor)
+  const factor = e.deltaY < 0 ? 1.04 : 0.96
+  scale.value = Math.min(3, Math.max(0.1, scale.value * factor))
+}
+
+const zoomIn  = () => { scale.value = Math.min(3,    scale.value * 1.08) }
+const zoomOut = () => { scale.value = Math.max(0.10, scale.value / 1.08) }
+
+const fitToScreen = () => {
+  if (!containerRef.value || !layout.value) return
+  const { wsW, wsH } = layout.value
+  const cw = containerRef.value.clientWidth
+  const ch = containerRef.value.clientHeight
+  const s = Math.min(cw / (wsW + 40), ch / (wsH + 40), 1)
+  scale.value = s
+  tx.value = (cw - wsW * s) / 2
+  ty.value = (ch - wsH * s) / 2
+}
+
+const resetView = () => { tx.value = 60; ty.value = 60; scale.value = 1 }
+
+onMounted(fitToScreen)
+watch(() => props.parsedObj, fitToScreen)
+
+// ─── Hover synchronization helpers ───────────────────────────────────────────
+const emitHover = (path) => {
+  emit('hover-path', path)
+}
+
+const isPathHovered = (path) => {
+  if (!props.hoveredPath || props.hoveredPath.length !== path.length) return false
+  return path.every((v, i) => v === props.hoveredPath[i])
+}
+
+const isCardHovered = (node) => {
+  if (!props.hoveredPath || props.hoveredPath.length === 0) return false
+  if (node.path.length !== props.hoveredPath.length - 1) return false
+  return node.path.every((v, i) => v === props.hoveredPath[i])
+}
+
+const isCurveHovered = (curve) => {
+  if (!props.hoveredPath || props.hoveredPath.length === 0) return false
+  try {
+    const nodePath = JSON.parse(curve.id)
+    if (nodePath.length > props.hoveredPath.length) return false
+    return nodePath.every((v, i) => v === props.hoveredPath[i])
+  } catch (e) {
+    return false
+  }
+}
+
+const graphViewStyle = computed(() => {
+  const s = Math.max(1, scale.value)
+  const size = 16 * s
+  return {
+    backgroundSize: `${size}px ${size}px`,
+    backgroundPosition: `${tx.value}px ${ty.value}px`
+  }
+})
+</script>
+
+<template>
+  <div
+    ref="containerRef"
+    class="graph-view"
+    :class="{ panning: isPanning }"
+    @mousedown="startPan"
+    @mousemove="doPan"
+    @mouseup="stopPan"
+    @mouseleave="stopPan"
+    @wheel.prevent="doZoom"
+    :style="graphViewStyle"
+  >
+    <!-- Workspace -->
+    <div
+      class="graph-workspace"
+      :style="{
+        transform: `translate(${tx}px, ${ty}px) scale(${scale})`,
+        width: layout ? layout.wsW + 'px' : '800px',
+        height: layout ? layout.wsH + 'px' : '600px'
+      }"
+    >
+      <!-- SVG layer for bezier curves and bullets -->
+      <svg
+        v-if="layout"
+        class="graph-svg"
+        :width="layout.wsW"
+        :height="layout.wsH"
+      >
+        <!-- Bezier curves -->
+        <path
+          v-for="curve in curves"
+          :key="'path-' + curve.id"
+          :d="curve.d"
+          class="graph-edge"
+          :class="{ 'is-hovered': isCurveHovered(curve) }"
+        />
+        <!-- Bullet dots on parent row right edge -->
+        <circle
+          v-for="curve in curves"
+          :key="'bul-' + curve.id"
+          :cx="curve.x1"
+          :cy="curve.y1"
+          :r="BULLET_R"
+          class="graph-bullet"
+          :class="{ 'is-hovered': isCurveHovered(curve) }"
+        />
+        <!-- Bullet dots on child card left edge -->
+        <circle
+          v-for="curve in curves"
+          :key="'dot-' + curve.id"
+          :cx="curve.x2"
+          :cy="curve.y2"
+          :r="BULLET_R"
+          class="graph-bullet"
+          :class="{ 'is-hovered': isCurveHovered(curve) }"
+        />
+      </svg>
+
+      <!-- Cards (Unified for all levels) -->
+      <div
+        v-for="node in layout?.nodes"
+        :key="node.id"
+        class="graph-node"
+        :class="{ 
+          'root-node': node.parentId === null,
+          'is-hovered': isCardHovered(node)
+        }"
+        :style="{
+          left: node.x + 'px',
+          top:  node.y + 'px',
+          width: node.width + 'px'
+        }"
+      >
+        <div
+          v-for="entry in node.entries"
+          :key="entry.key"
+          class="card-row"
+          :class="{ 'is-hovered': isPathHovered(getEntryPath(node, entry)) }"
+          :style="{ height: CARD_ROW_H + 'px' }"
+          @mouseenter="emitHover(getEntryPath(node, entry))"
+          @mouseleave="emitHover(null)"
+        >
+          <span class="card-key node-key" :class="{ 'card-key--index': node.isArray, 'root-key--complex': entry.isComplex }" v-html="highlightText(entry.key, searchQuery)">
+          </span>
+          <span class="card-val" :class="[getValueColorClass(entry.valueType), `cval-${entry.valueType}`]" v-html="highlightText(entry.preview, searchQuery)">
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Zoom controls -->
+    <div class="graph-controls">
+      <button class="ctrl-btn" @click.stop="zoomIn"     title="放大">＋</button>
+      <button class="ctrl-btn" @click.stop="zoomOut"    title="缩小">－</button>
+      <button class="ctrl-btn" @click.stop="fitToScreen" title="适应屏幕">⊡</button>
+      <button class="ctrl-btn" @click.stop="resetView"  title="重置视图">⟳</button>
+    </div>
+
+    <!-- Watermark -->
+    <div class="graph-credit">Graph View</div>
+  </div>
+</template>
+
+<style scoped>
+/* ── Container ── */
+.graph-view {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: grab;
+  user-select: none;
+  background-color: var(--bg-panel);
+  background-image: radial-gradient(var(--graph-dot-color) 0.8px, transparent 0);
+  background-size: 16px 16px;
+}
+.graph-view.panning { cursor: grabbing; }
+
+/* ── Workspace (transformed container) ── */
+.graph-workspace {
+  position: absolute;
+  top: 0; left: 0;
+  transform-origin: 0 0;
+}
+
+/* ── SVG ── */
+.graph-svg {
+  position: absolute;
+  top: 0; left: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+.graph-edge {
+  fill: none;
+  stroke: var(--border-color);
+  stroke-width: 1.5;
+}
+.graph-bullet {
+  fill: var(--text-secondary);
+}
+
+/* ── Nodes (shared) ── */
+.graph-node {
+  position: absolute;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+/* ── Root node special styling ── */
+.root-node {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.card-row {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  gap: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+.card-row:last-child { border-bottom: none; }
+
+.card-key {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--json-key);
+  min-width: 100px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.card-key--index {
+  color: var(--json-number);
+  font-weight: 600;
+}
+.root-key--complex {
+  font-weight: 600;
+}
+.card-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cval-string  { color: var(--json-string); }
+.cval-number  { color: var(--json-number); }
+.cval-boolean { color: var(--json-boolean); }
+.cval-null    { color: var(--json-null); font-style: italic; }
+
+/* ── Controls ── */
+.graph-controls {
+  position: absolute;
+  bottom: 20px;
+  left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 10;
+}
+.ctrl-btn {
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.ctrl-btn:hover {
+  background: var(--bg-app);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+}
+
+/* ── Hover synchronization styles ── */
+.card-row {
+  transition: background-color 0.15s ease;
+}
+.card-row.is-hovered {
+  background-color: var(--json-hover-bg);
+}
+
+.graph-edge {
+  transition: stroke 0.15s ease, stroke-width 0.15s ease, filter 0.15s ease;
+}
+.graph-edge.is-hovered {
+  stroke: var(--json-key) !important;
+  stroke-width: 2.5 !important;
+  filter: drop-shadow(0 0 2.5px var(--json-key));
+}
+
+.graph-bullet {
+  transition: fill 0.15s ease, r 0.15s ease;
+}
+.graph-bullet.is-hovered {
+  fill: var(--json-key) !important;
+  r: 6px !important;
+}
+
+.graph-node {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.graph-node.is-hovered {
+  border-color: var(--json-key);
+  box-shadow: 0 0 10px var(--json-hover-bg);
+}
+
+/* ── Watermark ── */
+.graph-credit {
+  position: absolute;
+  bottom: 8px;
+  left: 60px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.5;
+  pointer-events: none;
+  font-family: var(--font-sans);
+}
+</style>

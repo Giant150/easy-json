@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <!-- Dark rounded background (macOS/iOS app icon style) -->
+  <rect width="128" height="128" rx="28" fill="#111111"/>
+  <!-- Left curly brace -->
+  <text x="14" y="88" font-family="Arial, sans-serif" font-size="76" font-weight="700" fill="#ffffff" opacity="0.95">{</text>
+  <!-- Right curly brace -->
+  <text x="114" y="88" font-family="Arial, sans-serif" font-size="76" font-weight="700" fill="#ffffff" opacity="0.95" text-anchor="end">}</text>
+  <!-- Flame emoji / fire icon centered -->
+  <text x="64" y="87" font-family="Apple Color Emoji, Segoe UI Emoji, sans-serif" font-size="42" text-anchor="middle">🔥</text>
+</svg>

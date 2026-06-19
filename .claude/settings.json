@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(xxd /tmp/escaped-json.txt)",
+      "Bash(sed -n '2259,2263p' /Users/apple/GithubProjects/easy-json/src/components/HomeView.vue)",
+      "Bash(sed -n '2356,2359p' /Users/apple/GithubProjects/easy-json/src/components/HomeView.vue)",
+      "Bash(sed -n '2442,2445p' /Users/apple/GithubProjects/easy-json/src/components/HomeView.vue)",
+      "Bash(sed -n '2514,2517p' /Users/apple/GithubProjects/easy-json/src/components/HomeView.vue)",
+      "Bash(git checkout *)",
+      "Bash(npm run *)",
+      "WebFetch(domain:localhost)",
+      "Bash(curl -s http://localhost:5174/src/components/HomeView.vue)",
+      "Skill(run)",
+      "Skill(run:*)",
+      "Bash(npx playwright *)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/apple/GithubProjects/easy-json/public/images/diff.png)",
+      "Bash(identify /Users/apple/GithubProjects/easy-json/public/images/diff.png)"
+    ]
+  }
+}
