@@ -615,7 +615,9 @@ const formatJSON = () => {
   }
 
   // 自动格式化：将格式化结果回填到输入面板
-  if (autoFormat.value && tab.outputText && tab.inputText !== tab.outputText) {
+  // 但如果用户正在编辑（textarea 聚焦时），不替换，避免光标跳到末尾
+  if (autoFormat.value && tab.outputText && tab.inputText !== tab.outputText
+    && document.activeElement !== textareaRef.value) {
     formatGuard = true
     tab.inputText = tab.outputText
     formatGuard = false
@@ -667,6 +669,8 @@ watch(() => activeTab.value?.inputText, (newVal) => {
   if (!autoFormat.value || !newVal) return
   clearTimeout(autoFormatTimer)
   autoFormatTimer = setTimeout(() => {
+    // 如果用户正在编辑（textarea 聚焦），不替换，避免光标跳到末尾
+    if (document.activeElement === textareaRef.value) return
     const tab = activeTab.value
     try {
       const obj = JSON.parse(tab.inputText)
@@ -1208,6 +1212,10 @@ const highlightConverted = (code, format) => {
 const highlightedOutput = computed(() => {
   // 转换模式：显示转换后的内容（带语法高亮）
   if (convertFormat.value && convertedOutput.value) {
+    // JSON Schema 输出是合法 JSON，复用 JSON 语法高亮
+    if (convertFormat.value === 'jsonschema') {
+      return applyJsonHighlightWithPath(convertedOutput.value)
+    }
     return highlightConverted(convertedOutput.value, convertFormat.value)
   }
   const tab = activeTab.value
@@ -3014,12 +3022,14 @@ onBeforeUnmount(() => {
   right: 0;
   top: calc(100% + 6px);
   min-width: clamp(180px, 20vw, 240px);
+  max-height: min(420px, 60vh);
   background: var(--bg-panel, #fff);
   border: 1px solid var(--border-color, #e2e8f0);
   border-radius: 8px;
   box-shadow: 0 12px 36px rgba(0,0,0,0.12);
   z-index: 100;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .convert-menu-header {

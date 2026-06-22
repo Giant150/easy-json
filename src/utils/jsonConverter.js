@@ -725,7 +725,131 @@ export const jsonToIni = (jsonStr) => {
   return lines.join('\n').trimEnd()
 }
 
-// ═══ 20. JSON → PHP class ═══
+// ═══ 20. JSON → JSON Schema ═══
+export const jsonToJsonSchema = (jsonStr) => {
+  const obj = JSON.parse(jsonStr)
+
+  const inferSchema = (value) => {
+    if (value === null) return { type: 'null' }
+    if (typeof value === 'boolean') return { type: 'boolean' }
+    if (typeof value === 'number') {
+      return Number.isInteger(value) ? { type: 'integer' } : { type: 'number' }
+    }
+    if (typeof value === 'string') return { type: 'string' }
+
+    if (Array.isArray(value)) {
+      if (value.length === 0) return { type: 'array' }
+      const itemSchemas = value.map(v => inferSchema(v))
+      return { type: 'array', items: mergeSchemas(itemSchemas) }
+    }
+
+    if (typeof value === 'object') {
+      const properties = {}
+      const required = []
+      for (const [key, val] of Object.entries(value)) {
+        properties[key] = inferSchema(val)
+        required.push(key)
+      }
+      return { type: 'object', properties, required }
+    }
+
+    return { type: 'string' }
+  }
+
+  const mergeSchemas = (schemas) => {
+    if (schemas.length === 0) return { type: 'string' }
+    if (schemas.length === 1) return schemas[0]
+
+    const types = new Set(schemas.map(s => s.type))
+    if (types.size === 1) {
+      const type = schemas[0].type
+      if (type === 'object') {
+        const allKeys = new Set(schemas.flatMap(s => Object.keys(s.properties || {})))
+        const properties = {}
+        const required = []
+        for (const key of allKeys) {
+          const keySchemas = schemas
+            .filter(s => s.properties && s.properties[key])
+            .map(s => s.properties[key])
+          properties[key] = keySchemas.length > 0 ? mergeSchemas(keySchemas) : { type: 'string' }
+          if (schemas.every(s => s.required && s.required.includes(key))) {
+            required.push(key)
+          }
+        }
+        return { type: 'object', properties, required }
+      }
+      // Same primitive type — merge into a single schema; add enum if values differ
+      if (type === 'string') {
+        const uniqueVals = [...new Set(schemas.map(s => s._value).filter(v => v !== undefined))]
+        if (uniqueVals.length > 1) {
+          return { type: 'string', enum: uniqueVals }
+        }
+      }
+      return schemas[0]
+    }
+
+    // Mixed types — collect non-null types
+    const nonNullTypes = [...types].filter(t => t !== 'null')
+    if (nonNullTypes.length === 0) return { type: 'null' }
+    if (nonNullTypes.length === 1) return { type: [nonNullTypes[0], 'null'] }
+    return { type: nonNullTypes }
+  }
+
+  // Annotate string leaf schemas with their actual value for enum detection
+  const annotateValues = (value, schema) => {
+    if (typeof value === 'string') {
+      schema._value = value
+    } else if (Array.isArray(value) && schema.items) {
+      // Don't annotate array items (values vary)
+    } else if (value && typeof value === 'object' && schema.properties) {
+      for (const [key, val] of Object.entries(value)) {
+        if (schema.properties[key]) {
+          annotateValues(val, schema.properties[key])
+        }
+      }
+    }
+  }
+
+  // Helper to recursively strip internal _value markers and sort properties
+  const cleanSchema = (schema) => {
+    if (!schema || typeof schema !== 'object') return schema
+    const cleaned = {}
+    // $schema always first
+    if (schema.$schema) cleaned.$schema = schema.$schema
+    // type next
+    if (schema.type) {
+      cleaned.type = Array.isArray(schema.type) ? [...schema.type] : schema.type
+    }
+    // then properties
+    if (schema.properties) {
+      cleaned.properties = {}
+      for (const key of Object.keys(schema.properties).sort()) {
+        cleaned.properties[key] = cleanSchema(schema.properties[key])
+      }
+    }
+    // required (sorted)
+    if (schema.required && schema.required.length > 0) {
+      cleaned.required = [...schema.required].sort()
+    }
+    // items
+    if (schema.items) {
+      cleaned.items = cleanSchema(schema.items)
+    }
+    // enum
+    if (schema.enum) {
+      cleaned.enum = schema.enum
+    }
+    return cleaned
+  }
+
+  const schema = inferSchema(obj)
+  annotateValues(obj, schema)
+  schema.$schema = 'http://json-schema.org/draft-07/schema#'
+
+  return JSON.stringify(cleanSchema(schema), null, 2)
+}
+
+// ═══ 21. JSON → PHP class ═══
 export const jsonToPhp = (jsonStr, rootName = 'Root') => {
   const obj = JSON.parse(jsonStr)
   const classes = []
@@ -793,7 +917,8 @@ export const getFormatExtension = (format) => {
     go: 'go', protobuf: 'proto', rust: 'rs',
     python: 'py', kotlin: 'kt', csharp: 'cs',
     dart: 'dart', swift: 'swift', graphql: 'graphql',
-    properties: 'properties', markdown: 'md', ini: 'ini', php: 'php'
+    properties: 'properties', markdown: 'md', ini: 'ini', php: 'php',
+    jsonschema: 'json'
   }
   return map[format] || 'txt'
 }
@@ -817,7 +942,7 @@ export const convertJson = (jsonStr, format) => {
     python: jsonToPython, kotlin: jsonToKotlin, csharp: jsonToCSharp,
     dart: jsonToDart, swift: jsonToSwift, graphql: jsonToGraphql,
     properties: jsonToProperties, markdown: jsonToMarkdownTable,
-    ini: jsonToIni, php: jsonToPhp
+    ini: jsonToIni, php: jsonToPhp, jsonschema: jsonToJsonSchema
   }
   const fn = converters[format]
   if (!fn) throw new Error(`未知转换格式: ${format}`)
@@ -826,6 +951,8 @@ export const convertJson = (jsonStr, format) => {
 
 // 转换格式的显示名称（按分类排序）
 export const formatLabels = {
+  // 序列化/协议
+  jsonschema: 'JSON Schema',
   // 数据格式
   xml: 'XML',
   csv: 'CSV',

@@ -918,10 +918,9 @@ onMounted(() => {
       <div class="diff-grid-wrapper full-height">
         <div class="diff-grid">
           <!-- Left Pane (Original) -->
-          <div 
+          <div
             class="diff-pane"
             :class="{ 'editing-pane': leftEditing }"
-            @mouseleave="stopEditingLeft"
           >
             <div class="panel-header">
               <div class="panel-title">
@@ -1028,10 +1027,9 @@ onMounted(() => {
           </div>
 
           <!-- Right Pane (Modified) -->
-          <div 
+          <div
             class="diff-pane"
             :class="{ 'editing-pane': rightEditing }"
-            @mouseleave="stopEditingRight"
           >
             <div class="panel-header">
               <div class="panel-title">
