@@ -1057,7 +1057,7 @@ onBeforeUnmount(() => {
 .dark-mode .home-content-wrap > section{}
 
 /* ═══ HERO ═══ */
-.hero-section{position:relative;width:100%;min-height:66vh;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 0 96px;overflow:hidden}
+.hero-section{position:relative;width:100%;min-height:35rem;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:48px 0 96px}
 .hero-section > *:not(canvas){position:relative;z-index:1}
 .hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);color:var(--text-secondary);font-size:12px;font-weight:500;font-family:var(--font-sans);padding:5px 16px;border-radius:99px;margin:48px 0 24px;box-shadow:var(--glass-shadow-sm)}
 .dark-mode .hero-badge{background:var(--glass-bg-dark);border-color:var(--glass-border-dark)}
