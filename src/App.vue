@@ -4,10 +4,15 @@ import JsonFormatter from './components/JsonFormatter.vue'
 import JsonComparer from './components/JsonComparer.vue'
 import HomeView from './components/HomeView.vue'
 import TestView from './components/TestView.vue'
-import { Sun, Moon, Split, Braces, CheckCircle, AlertTriangle, Palette, ArrowUpDown, Space, Zap, ClipboardCheck, Search, Home, Maximize, Clipboard, FlaskConical } from 'lucide-vue-next'
+import { Sun, Moon, Split, Braces, CheckCircle, AlertTriangle, Palette, ArrowUpDown, Space, Zap, ClipboardCheck, Search, Home, Maximize, Clipboard, FlaskConical, Download, X } from 'lucide-vue-next'
+import { useUpdateCheck } from './composables/useUpdateCheck.js'
 
 const currentView = ref('home') // 'home' | 'editor' | 'test'
 const isPopup = ref(false)
+
+// ── 版本更新检查 ──
+const { hasUpdate, latestVersion, downloadUrl } = useUpdateCheck()
+const updateDismissed = ref(false)
 
 const openInTab = () => {
   const url = chrome.runtime.getURL('index.html?mode=tab')
@@ -237,6 +242,25 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- 版本更新提示 -->
+  <Transition name="slide-down">
+    <div v-if="hasUpdate && !updateDismissed" class="update-banner">
+      <div class="update-banner-content">
+        <AlertTriangle class="update-banner-icon" />
+        <span>发现新版本 v{{ latestVersion }}，建议更新</span>
+      </div>
+      <div class="update-banner-actions">
+        <a :href="downloadUrl" target="_blank" class="update-banner-btn">
+          <Download class="update-btn-icon" />
+          <span>下载</span>
+        </a>
+        <button class="update-banner-close" @click="updateDismissed = true">
+          <X class="update-close-icon" />
+        </button>
+      </div>
+    </div>
+  </Transition>
+
   <!-- Home Page View -->
   <HomeView v-if="currentView === 'home'" @go-to-app="goToApp" />
 
@@ -395,5 +419,82 @@ onMounted(() => {
 
 .toast-slide-move {
   transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── 版本更新提示横幅 ── */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #d97706, #f59e0b);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  position: relative;
+  z-index: 999;
+}
+.update-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.update-banner-icon {
+  width: 16px;
+  height: 16px;
+}
+.update-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.update-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 12px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.22);
+  color: #fff;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 600;
+  transition: background 0.15s;
+}
+.update-banner-btn:hover {
+  background: rgba(255,255,255,0.35);
+}
+.update-btn-icon {
+  width: 13px;
+  height: 13px;
+}
+.update-banner-close {
+  display: flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: transparent;
+  color: rgba(255,255,255,0.8);
+  cursor: pointer;
+  border-radius: 4px;
+}
+.update-banner-close:hover {
+  color: #fff;
+  background: rgba(255,255,255,0.15);
+}
+.update-close-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.3s ease;
+}
+.slide-down-enter-from,
+.slide-down-leave-to {
+  transform: translateY(-100%);
+  opacity: 0;
 }
 </style>
