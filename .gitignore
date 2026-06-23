@@ -32,3 +32,5 @@ out/
 
 # Misc
 *.zip
+# Tauri
+src-tauri/target/

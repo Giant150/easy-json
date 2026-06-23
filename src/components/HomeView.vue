@@ -12,6 +12,12 @@ import { useHeroParticles } from '../composables/useHeroParticles.js'
 const heroRef = ref(null)
 const heroParticles = useHeroParticles()
 
+const trackDownload = (platform) => {
+  if (window._hmt) {
+    window._hmt.push(['_trackEvent', '下载', platform])
+  }
+}
+
 const emit = defineEmits(['go-to-app'])
 
 const openFaq = ref(null)
@@ -509,7 +515,7 @@ onBeforeUnmount(() => {
                   <h4 class="hero-dl-card-title">Chrome 插件</h4>
                   <p class="hero-dl-card-desc">网页选中文本右键即可提取 JSON</p>
                   <span class="hero-dl-card-meta">Chrome / Edge / Firefox</span>
-                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson-plugin.zip" class="hero-dl-card-btn">安装插件</a>
+                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson-plugin.zip" class="hero-dl-card-btn" @click="trackDownload('Chrome插件')">安装插件</a>
                 </div>
                 <!-- macOS -->
                 <div class="hero-dl-card">
@@ -520,7 +526,7 @@ onBeforeUnmount(() => {
                   </div>
                   <h4 class="hero-dl-card-title">macOS 客户端</h4>
                   <p class="hero-dl-card-desc">原生 Electron，支持 Apple Silicon 和 Intel</p>
-                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.dmg" class="hero-dl-card-btn">下载 macOS 版</a>
+                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.dmg" class="hero-dl-card-btn" @click="trackDownload('macOS客户端')">下载 macOS 版</a>
                 </div>
                 <!-- Windows -->
                 <div class="hero-dl-card">
@@ -532,7 +538,7 @@ onBeforeUnmount(() => {
                   <h4 class="hero-dl-card-title">Windows 客户端</h4>
                   <p class="hero-dl-card-desc">NSIS 安装包，即装即用</p>
                   <span class="hero-dl-card-meta">Windows 10 / 11 · 64位</span>
-                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.exe" class="hero-dl-card-btn">下载 .exe</a>
+                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.exe" class="hero-dl-card-btn" @click="trackDownload('Windows客户端')">下载 .exe</a>
                 </div>
               </div>
             </div>

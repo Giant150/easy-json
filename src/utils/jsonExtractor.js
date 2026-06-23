@@ -631,7 +631,24 @@ export const parseJavaValue = (text, pos) => {
     else if (c === '}' || c === ']' || c === ')') {
       if (depth === 0) break
       depth--
-    } else if (c === ',' && depth === 0) break
+    } else if (c === ',' && depth === 0) {
+      // 前瞻：逗号后到下一个逗号/右括号之间是否有 = 号？
+      // 有 → 这是 key=value 分隔符；没有 → 逗号是值的一部分（如 v_sstime,v_setime）
+      let hasEquals = false
+      let la = j + 1
+      let laDepth = 0
+      while (la < text.length) {
+        const lc = text[la]
+        if (lc === '{' || lc === '[' || lc === '(') laDepth++
+        else if (lc === '}' || lc === ']' || lc === ')') {
+          if (laDepth === 0) break
+          laDepth--
+        } else if (lc === '=' && laDepth === 0) { hasEquals = true; break }
+        else if (lc === ',' && laDepth === 0) break
+        la++
+      }
+      if (hasEquals) break
+    }
     j++
   }
   const raw = text.substring(i, j).trim()
@@ -687,11 +704,11 @@ export const convertJavaToJson = (text) => {
     const [obj] = parseJavaObject(trimmed, 1, '}')
     return JSON.stringify(obj, null, 2)
   }
-  // Java 数组/List toString: [key=val, key=val, ...] — 单对象数组
+  // Java 数组/List toString: [{key=val, ...}, {key=val, ...}]
   if (trimmed.startsWith('[') && trimmed.endsWith(']') && trimmed.includes('=') && !trimmed.includes(':')) {
-    const [obj] = parseJavaObject(trimmed, 1, ']')
-    if (obj && typeof obj === 'object' && Object.keys(obj).length > 0) {
-      return JSON.stringify(obj, null, 2)
+    const [result] = parseJavaValue(trimmed, 0)
+    if (result !== null && typeof result === 'object') {
+      return JSON.stringify(result, null, 2)
     }
   }
   return null
