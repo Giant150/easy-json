@@ -15,7 +15,32 @@
       "Skill(run:*)",
       "Bash(npx playwright *)",
       "Bash(sips -g pixelWidth -g pixelHeight /Users/apple/GithubProjects/easy-json/public/images/diff.png)",
-      "Bash(identify /Users/apple/GithubProjects/easy-json/public/images/diff.png)"
+      "Bash(identify /Users/apple/GithubProjects/easy-json/public/images/diff.png)",
+      "Bash(npx tauri *)",
+      "Bash(npm install *)",
+      "Bash(rustc --version)",
+      "Bash(cargo --version)",
+      "Bash(curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs)",
+      "Bash(sh -s -- -y)",
+      "Bash(bash bundle_dmg.sh)",
+      "Bash(otool -l /Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyJSON.app/Contents/MacOS/easy-json)",
+      "Bash(/usr/libexec/PlistBuddy -c \"Print :LSMinimumSystemVersion\" /Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyJSON.app/Contents/Info.plist)",
+      "Bash(lipo -create /Users/apple/GithubProjects/easy-json/src-tauri/target/aarch64-apple-darwin/release/easy-json /Users/apple/GithubProjects/easy-json/src-tauri/target/x86_64-apple-darwin/release/easy-json -output /Users/apple/GithubProjects/easy-json/src-tauri/target/release/easy-json)",
+      "Bash(lipo -create /Users/apple/GithubProjects/easy-json/src-tauri/target/release/easy-json /Users/apple/GithubProjects/easy-json/src-tauri/target/x86_64-apple-darwin/release/easy-json -output /Users/apple/GithubProjects/easy-json/src-tauri/target/release/easy-json-universal)",
+      "Bash(codesign --force --sign - /Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyJSON.app)",
+      "Bash(otool -l /Users/apple/GithubProjects/easy-json/src-tauri/target/release/easy-json-universal)",
+      "Bash(sw_vers)",
+      "Bash(bash -x bundle_dmg.sh)",
+      "Bash(file /Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyjson_v1.0.1.app/Contents/MacOS/*)",
+      "Bash(rm -f /tmp/easyjson_rw.dmg /Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/dmg/easyJSON_1.0.1_universal.dmg)",
+      "Bash(hdiutil create *)",
+      "Bash(hdiutil attach *)",
+      "Bash(cp -R /Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyjson_v1.0.1.app /Volumes/easyJSON/)",
+      "Bash(hdiutil detach *)",
+      "Bash(# Clean up leftover mounts *)",
+      "Read(//Volumes/**)",
+      "WebSearch",
+      "Bash(chmod +x /Users/apple/GithubProjects/easy-json/scripts/build-universal.sh)"
     ]
   }
 }
