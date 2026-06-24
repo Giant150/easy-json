@@ -2241,7 +2241,7 @@ onBeforeUnmount(() => {
   gap: 5px;
   padding: 0 8px;
   border: 1px solid var(--border-color);
-  background-color: var(--bg-panel);
+  background-color: var(--action-btn-bg);
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 500;
@@ -2271,7 +2271,7 @@ onBeforeUnmount(() => {
 }
 
 .action-btn.outline {
-  background-color: var(--bg-panel);
+  background-color: var(--action-btn-bg);
   color: var(--text-primary);
 }
 
@@ -2305,8 +2305,6 @@ onBeforeUnmount(() => {
   height: 28px !important;
   justify-content: center;
   box-sizing: border-box !important;
-  background: #e3e3e3;
-    box-shadow: 20px 20px 60px #c1c1c1, -20px -20px 60px #ffffff;
 }
 
 .btn-icon {
@@ -2344,10 +2342,10 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  height: clamp(36px, 4vw, 50px) !important;
-  min-height: clamp(36px, 4vw, 50px) !important;
-  max-height: clamp(36px, 4vw, 50px) !important;
-  padding: 0 10px !important;
+  height: auto !important;
+  min-height: 40px !important;
+  max-height: none !important;
+  padding: 2px 10px !important;
   border-bottom: 1px solid var(--border-color) !important;
   background-color: var(--bg-panel);
   box-sizing: border-box !important;
@@ -2577,24 +2575,31 @@ onBeforeUnmount(() => {
   cursor: not-allowed;
 }
 
-/* Toolbar Actions (inline text commands) */
+/* Toolbar Actions (icon-above-text layout) */
 .toolbar-actions {
   display: inline-flex;
   align-items: center;
-  height: 32px;
+  height: auto;
   padding: 0;
-  gap: 2px;
+  gap: 1px;
+  min-width: 0;
+  overflow: visible;
+  flex-wrap: wrap;
+  flex-shrink: 1;
 }
 
 .toolbar-item {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 0 8px;
-  height: 26px;
+  justify-content: center;
+  gap: 1px;
+  padding: 2px 8px;
+  min-width: 38px;
+  height: auto;
   border: none;
-  background: transparent;
-  color: var(--text-muted);
+  background: var(--toolbar-item-bg);
+  color: var(--text-secondary);
   border-radius: 6px;
   cursor: pointer;
   font-size: 12px;
@@ -2621,23 +2626,23 @@ onBeforeUnmount(() => {
 }
 
 .toolbar-icon {
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
 
 .toolbar-label {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 500;
   line-height: 1;
 }
 
 .toolbar-divider {
   width: 1px;
-  height: 16px;
+  height: 28px;
   background-color: var(--border-color);
-  margin: 0 2px;
-  opacity: 0.5;
+  margin: 0 3px;
+  opacity: 0.4;
 }
 
 /* Hover style in highlight pre */
@@ -2729,6 +2734,54 @@ onBeforeUnmount(() => {
 .tool-icon {
   width: 13px;
   height: 13px;
+}
+
+@media (max-width: 960px) {
+  .panel-header {
+    flex-wrap: wrap;
+  }
+  .toolbar-item {
+    padding: 2px 6px;
+    min-width: 34px;
+  }
+  .toolbar-divider {
+    margin: 0 1px;
+  }
+  .header-search-wrapper {
+    flex-shrink: 1;
+    min-width: 0;
+    gap: 2px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .header-search-wrapper .action-btn.icon-only {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+  }
+  .header-search-wrapper .btn-icon {
+    width: 12px;
+    height: 12px;
+  }
+}
+
+body.utools-mode {
+  .header-search-wrapper {
+    flex-shrink: 1;
+    min-width: 0;
+    gap: 2px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .header-search-wrapper .action-btn.icon-only {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+  }
+  .header-search-wrapper .btn-icon {
+    width: 12px;
+    height: 12px;
+  }
 }
 
 @media (max-width: 600px) {
@@ -2852,6 +2905,7 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
 }
 
 /* Search & Replace Box */

@@ -1361,7 +1361,7 @@ onMounted(() => {
   gap: 5px;
   padding: 0 8px;
   border: 1px solid var(--border-color);
-  background-color: var(--bg-panel);
+  background-color: var(--action-btn-bg);
   color: var(--text-primary);
   font-size: 12px;
   font-weight: 500;
@@ -1391,7 +1391,7 @@ onMounted(() => {
 }
 
 .action-btn.outline {
-  background-color: var(--bg-panel);
+  background-color: var(--action-btn-bg);
   color: var(--text-primary);
 }
 
@@ -1405,8 +1405,6 @@ onMounted(() => {
   height: 28px !important;
   justify-content: center;
   box-sizing: border-box !important;
-  background: #e3e3e3;
-    box-shadow: 20px 20px 60px #c1c1c1, -20px -20px 60px #ffffff;
 }
 
 .action-btn.danger {
@@ -1470,8 +1468,8 @@ onMounted(() => {
 .panel-header {
   display: flex;
   align-items: center;
-  height: clamp(36px, 4vw, 50px) !important;
-  min-height: clamp(36px, 4vw, 50px) !important;
+  height: clamp(40px, 4vw, 50px) !important;
+  min-height: clamp(40px, 4vw, 50px) !important;
   max-height: clamp(36px, 4vw, 50px) !important;
   padding: 0 10px !important;
   border-bottom: 1px solid var(--border-color) !important;

@@ -35,4 +35,7 @@ out/
 # Tauri
 src-tauri/target/
 
+# uTools
+utools-dist/
+
 easyjson-plugin/

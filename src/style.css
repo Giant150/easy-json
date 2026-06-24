@@ -5,6 +5,7 @@
   /* ── Light Mode (json4u-inspired: clean, solid, professional) ── */
   --bg-app: #f8f9fa;
   --bg-panel: #ffffff;
+  --action-btn-bg: #ffffff;
   --bg-input: #ffffff;
   --bg-header: #ffffff;
   --border-color: #e5e7eb;
@@ -52,22 +53,24 @@
   --segmented-indicator-bg: #fff;
   --segmented-active-color: #000;
   --segmented-hover-bg: hsl(210 40% 90%);
+  --toolbar-item-bg: transparent;
 
   font-family: var(--font-sans);
   color-scheme: light dark;
 }
 
 :root.dark-mode {
-  /* ── Dark Mode (VSCode-style) ── */
-  --bg-app: #1e1e1e;
-  --bg-panel: #252526;
+  /* ── Dark Mode ── */
+  --bg-app: #212121;
+  --bg-panel: #2a2a2c;
+  --action-btn-bg: rgba(255, 255, 255, 0.10);
   --bg-input: #1e1e1e;
-  --bg-header: #252526;
-  --border-color: #2d2d2d;
-  --border-color-active: #555555;
+  --bg-header: #2a2a2c;
+  --border-color: #38383a;
+  --border-color-active: #5a5a5d;
   --text-primary: #d4d4d4;
-  --text-secondary: #858585;
-  --text-muted: #4d4d4d;
+  --text-secondary: #a0a0a0;
+  --text-muted: #7a7a7a;
 
   --primary-color: #4fc1ff;
   --primary-light: rgba(79, 193, 255, 0.1);
@@ -101,9 +104,10 @@
 
   /* Segmented control 暗色 */
   --segmented-bg: #3a3a3d;
-  --segmented-indicator-bg: #555558;
+  --segmented-indicator-bg: #4a4a4e;
   --segmented-active-color: #fff;
   --segmented-hover-bg: #4a4a4d;
+  --toolbar-item-bg: transparent;
 }
 
 * {

@@ -9,6 +9,7 @@ import { useUpdateCheck } from './composables/useUpdateCheck.js'
 
 const currentView = ref('home') // 'home' | 'editor' | 'test'
 const isPopup = ref(false)
+const isUtools = ref(false)
 
 // ── 版本更新检查 ──
 const { hasUpdate, latestVersion, downloadUrl } = useUpdateCheck()
@@ -155,36 +156,44 @@ const updateSyntaxThemeClass = () => {
 }
 
 onMounted(() => {
-  const urlParams = new URLSearchParams(window.location.search)
-  const isTab = urlParams.get('mode') === 'tab'
-  const isExtract = urlParams.get('action') === 'extract'
-
-  // Right-click extract: force editor view + format tab
-  if (isExtract) {
+  // uTools 环境：直接进入编辑器，跳过首页
+  if (window.__UTOOLS__) {
+    isUtools.value = true
+    document.body.classList.add('utools-mode')
     currentView.value = 'editor'
-    currentTab.value = 'format'
-  } else if (isTab) {
-    // 插件图标点击（全屏标签页）→ 直接进入格式化页面
-    currentView.value = 'editor'
-  } else {
-    // Restore view preference (home / editor) — default to home on first launch
-    const savedView = localStorage.getItem('ej_view')
-    if (savedView === 'editor') {
-      currentView.value = 'editor'
-    }
-
-    // Restore last active panel (format / compare)
     const savedTab = localStorage.getItem('ej_tab')
     if (savedTab === 'format' || savedTab === 'compare') {
       currentTab.value = savedTab
     }
-  }
+  } else {
+    const urlParams = new URLSearchParams(window.location.search)
+    const isTab = urlParams.get('mode') === 'tab'
+    const isExtract = urlParams.get('action') === 'extract'
 
-  // Detect if running as a Chrome extension popup (not a full tab)
-  const isExtension = window.chrome && window.chrome.runtime && window.chrome.runtime.id
-  if (isExtension && !isTab && !isExtract) {
-    document.documentElement.classList.add('popup-mode')
-    isPopup.value = true
+    // Right-click extract: force editor view + format tab
+    if (isExtract) {
+      currentView.value = 'editor'
+      currentTab.value = 'format'
+    } else if (isTab) {
+      currentView.value = 'editor'
+    } else {
+      const savedView = localStorage.getItem('ej_view')
+      if (savedView === 'editor') {
+        currentView.value = 'editor'
+      }
+
+      const savedTab = localStorage.getItem('ej_tab')
+      if (savedTab === 'format' || savedTab === 'compare') {
+        currentTab.value = savedTab
+      }
+    }
+
+    // Detect if running as a Chrome extension popup (not a full tab)
+    const isExtension = window.chrome && window.chrome.runtime && window.chrome.runtime.id
+    if (isExtension && !isTab && !isExtract) {
+      document.documentElement.classList.add('popup-mode')
+      isPopup.value = true
+    }
   }
   
   // Restore dark/light preference (localStorage first, then system preference)
@@ -324,7 +333,7 @@ onMounted(() => {
        <!-- <button class="sidebar-btn" @click="goToTest" data-tooltip-right="提取测试">
           <FlaskConical class="sidebar-btn-icon" />
         </button>-->
-        <button class="sidebar-btn" @click="goToHome" data-tooltip-right="返回主页">
+        <button v-if="!isUtools" class="sidebar-btn" @click="goToHome" data-tooltip-right="返回主页">
           <Home class="sidebar-btn-icon" />
         </button>
       </div>

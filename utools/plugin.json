@@ -1,0 +1,20 @@
+{
+  "pluginName": "easyJSON",
+  "description": "专业级 JSON 格式化、校验与对比工具",
+  "main": "index.html",
+  "version": "1.0.0",
+  "preload": "preload.js",
+  "logo": "logo.png",
+  "platform": ["win32", "darwin", "linux"],
+  "pluginSetting": {
+    "single": true
+  },
+  "features": [
+    {
+      "code": "easyJSON",
+      "explain": "JSON 格式化、校验、对比",
+      "cmds": ["easyJSON", "JSON", "json格式化", "json对比", "json校验"],
+      "platform": ["win32", "darwin", "linux"]
+    }
+  ]
+}
