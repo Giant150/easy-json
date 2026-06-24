@@ -533,11 +533,15 @@ const formatJSON = () => {
     return
   }
 
-  // 检测重复 key
-  const dups = detectDuplicateKeys(tab.inputText)
-  tab.duplicateLines = dups.map(d => d.dupLine)
-  if (dups.length > 0) {
-    showToast(`检测到 ${dups.length} 个重复 key: ${dups.map(d => `"${d.key}"`).join(', ')}`, 'error')
+  // 检测重复 key（大文本跳过，避免阻塞）
+  if (!isHeavy(tab.inputText)) {
+    const dups = detectDuplicateKeys(tab.inputText)
+    tab.duplicateLines = dups.map(d => d.dupLine)
+    if (dups.length > 0) {
+      showToast(`检测到 ${dups.length} 个重复 key: ${dups.map(d => `"${d.key}"`).join(', ')}`, 'error')
+    }
+  } else {
+    tab.duplicateLines = []
   }
 
   try {
@@ -558,7 +562,8 @@ const formatJSON = () => {
       tab.outputText = JSON.stringify(obj, null, space)
     }
   } catch (err) {
-    const escapedCheck = checkEscapedJson(tab.inputText)
+    const heavy = isHeavy(tab.inputText)
+    const escapedCheck = heavy ? null : checkEscapedJson(tab.inputText)
     if (escapedCheck) {
       tab.validationError = null
       tab.errorLine = null
@@ -577,30 +582,31 @@ const formatJSON = () => {
         tab.outputText = JSON.stringify(obj, null, space)
       }
     } else {
-      // 智能提取：尝试从非 JSON 格式中提取
       let extracted = false
-      try {
-        const result = extractJsonFromText(tab.inputText)
-        if (result) {
-          let obj = JSON.parse(result.json)
-          tab.validationError = null
-          tab.errorLine = null
-          tab.extractedFormat = result.format !== 'JSON' ? result.format : null
-          tab.parsedObj = obj
+      if (!heavy) {
+        try {
+          const result = extractJsonFromText(tab.inputText)
+          if (result) {
+            let obj = JSON.parse(result.json)
+            tab.validationError = null
+            tab.errorLine = null
+            tab.extractedFormat = result.format !== 'JSON' ? result.format : null
+            tab.parsedObj = obj
 
-          if (sortKeys.value) {
-            obj = sortJSONKeys(obj)
-          }
+            if (sortKeys.value) {
+              obj = sortJSONKeys(obj)
+            }
 
-          if (indentSize.value === 'minify') {
-            tab.outputText = JSON.stringify(obj)
-          } else {
-            const space = indentSize.value === 'tab' ? '\t' : parseInt(indentSize.value)
-            tab.outputText = JSON.stringify(obj, null, space)
+            if (indentSize.value === 'minify') {
+              tab.outputText = JSON.stringify(obj)
+            } else {
+              const space = indentSize.value === 'tab' ? '\t' : parseInt(indentSize.value)
+              tab.outputText = JSON.stringify(obj, null, space)
+            }
+            extracted = true
           }
-          extracted = true
-        }
-      } catch (e2) {}
+        } catch (e2) {}
+      }
 
       if (!extracted) {
         tab.parsedObj = null
@@ -621,6 +627,11 @@ const formatJSON = () => {
     formatGuard = true
     tab.inputText = tab.outputText
     formatGuard = false
+  }
+
+  // 大树 JSON 自动折叠节点（避免 DOM 爆炸）
+  if (tab.parsedObj && countKeys(tab.parsedObj) > 5000) {
+    treeExpanded.value = false
   }
 }
 
@@ -702,6 +713,27 @@ const outputLinesCount = computed(() => {
   return activeTab.value.outputText ? activeTab.value.outputText.split('\n').length : 1
 })
 
+const inputGutterHtml = computed(() => {
+  const count = inputLinesCount.value
+  const errorLine = activeTab.value.errorLine
+  const dupLines = new Set(activeTab.value.duplicateLines || [])
+  const lines = []
+  for (let n = 1; n <= count; n++) {
+    const cls = errorLine === n ? ' has-error' : dupLines.has(n) ? ' has-duplicate' : ''
+    lines.push(`<div class="gutter-line${cls}">${n}</div>`)
+  }
+  return lines.join('')
+})
+
+const outputGutterHtml = computed(() => {
+  const count = outputLinesCount.value
+  const lines = []
+  for (let n = 1; n <= count; n++) {
+    lines.push(`<div class="gutter-line">${n}</div>`)
+  }
+  return lines.join('')
+})
+
 const activeScrollTarget = ref(null)
 
 const syncGutterScroll = () => {
@@ -773,6 +805,19 @@ const loadDemo = () => {
 // 展开/折叠全部树节点（toggle）
 const treeExpanded = ref(true)
 provide('treeExpanded', treeExpanded)
+
+// 统计对象总 key 数量（用于大 JSON 自动折叠）
+const countKeys = (obj) => {
+  if (!obj || typeof obj !== 'object') return 0
+  let n = 0
+  if (Array.isArray(obj)) {
+    for (const item of obj) n += countKeys(item)
+  } else {
+    n += Object.keys(obj).length
+    for (const v of Object.values(obj)) n += countKeys(v)
+  }
+  return n
+}
 
 const handleToggleExpand = () => {
   treeExpanded.value = !treeExpanded.value
@@ -1118,8 +1163,53 @@ const applyJsonHighlightWithPath = (text, counter) => {
 
 // Input highlight (left pane) — no current-match tracking
 // Input highlight (left pane) — drives match count since replace targets input text
+
+// ── 大 JSON 性能模式 ──
+const HEAVY_SIZE = 50_000
+const HEAVY_LINES = 1000
+const VERY_HEAVY_SIZE = 200_000
+const isHeavy = (text) => {
+  if (!text) return false
+  if (text.length > HEAVY_SIZE) return true
+  let lines = 0
+  for (let i = 0; i < text.length; i++) {
+    if (text[i] === '\n' && ++lines >= HEAVY_LINES) return true
+  }
+  return false
+}
+const isHeavyInput = computed(() => isHeavy(activeTab.value?.inputText))
+const isHeavyOutput = computed(() => isHeavy(activeTab.value?.outputText))
+
+const plainEscape = (text) => {
+  if (!text) return ''
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+const lightweightHighlight = (text) => {
+  if (!text) return ''
+  if (text.length > VERY_HEAVY_SIZE) return plainEscape(text)
+  let safe = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  return safe.replace(
+    /("(?:[^"\\]|\\.)*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|[{}[\]]|,)/g,
+    (match) => {
+      if (match === '{' || match === '}') return `<span class="json-bracket">${match}</span>`
+      if (match === '[' || match === ']') return `<span class="json-bracket">${match}</span>`
+      if (match === ',') return match
+      if (match.endsWith(':')) {
+        const ci = match.lastIndexOf(':')
+        return `<span class="json-key">${match.slice(0, ci)}</span>:`
+      }
+      if (match.startsWith('"')) return `<span class="json-string">${match}</span>`
+      if (match === 'true' || match === 'false') return `<span class="json-boolean">${match}</span>`
+      if (match === 'null') return `<span class="json-null">${match}</span>`
+      return `<span class="json-number">${match}</span>`
+    }
+  )
+}
+
 const highlightedInput = computed(() => {
   const tab = activeTab.value
+  if (isHeavyInput.value) return lightweightHighlight(tab.inputText)
   const counter = searchQuery.value
     ? { count: 0, target: currentMatchIndex.value }
     : null
@@ -1214,12 +1304,14 @@ const highlightedOutput = computed(() => {
   if (convertFormat.value && convertedOutput.value) {
     // JSON Schema 输出是合法 JSON，复用 JSON 语法高亮
     if (convertFormat.value === 'jsonschema') {
+      if (isHeavy(convertedOutput.value)) return lightweightHighlight(convertedOutput.value)
       return applyJsonHighlightWithPath(convertedOutput.value)
     }
     return highlightConverted(convertedOutput.value, convertFormat.value)
   }
   const tab = activeTab.value
   if (!tab.outputText) return ''
+  if (isHeavyOutput.value) return lightweightHighlight(tab.outputText)
   const counter = searchQuery.value
     ? { count: 0, target: currentMatchIndex.value }
     : null
@@ -1810,16 +1902,7 @@ onBeforeUnmount(() => {
         <div class="panel-body">
           <div class="editor-wrapper">
             <!-- Sync scroll line numbers -->
-            <div class="gutter" ref="gutterRef">
-              <div 
-                v-for="n in inputLinesCount" 
-                :key="n" 
-                class="gutter-line" 
-                :class="{ 'has-error': activeTab.errorLine === n, 'has-duplicate': activeTab.duplicateLines?.includes(n) }"
-              >
-                {{ n }}
-              </div>
-            </div>
+            <div class="gutter" ref="gutterRef" v-html="inputGutterHtml"></div>
             
             <div class="textarea-overlay-container" :class="{ 'minify-wrap': isInputMinified }">
               <!-- Syntax highlight overlay (behind textarea) -->
@@ -1953,13 +2036,7 @@ onBeforeUnmount(() => {
           <Transition name="fade-slide" mode="out-in">
             <!-- Text output -->
             <div v-if="activeTab.viewMode === 'text'" class="output-wrapper" key="text">
-              <div class="gutter" ref="outputGutterRef">
-                <div
-                  v-for="n in outputLinesCount"
-                  :key="n"
-                  class="gutter-line"
-                >{{ n }}</div>
-              </div>
+              <div class="gutter" ref="outputGutterRef" v-html="outputGutterHtml"></div>
               <pre 
                 class="output-pre" 
                 :class="{ 'minify-wrap': isOutputMinified }"
@@ -2414,6 +2491,9 @@ onBeforeUnmount(() => {
   user-select: text;
   min-width: 0;
   color: var(--text-primary);
+  /* 大文件虚拟滚动 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 3000px;
 }
 
 .output-wrapper {

@@ -80,7 +80,11 @@ export function useUpdateCheck() {
     return 0
   }
 
-  onMounted(check)
+  onMounted(() => {
+    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+      check()
+    }
+  })
 
   return { hasUpdate, latestVersion, downloadUrl, check }
 }

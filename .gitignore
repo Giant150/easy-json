@@ -34,3 +34,5 @@ out/
 *.zip
 # Tauri
 src-tauri/target/
+
+easyjson-plugin/
