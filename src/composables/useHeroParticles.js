@@ -4,8 +4,12 @@
 const dpr = Math.min(window.devicePixelRatio || 1, 2)
 
 class AntigravityParticle {
-  constructor(tx, ty, canvasWidth, canvasHeight, isShape = false) {
-    this.isShape = isShape
+  // isShape: 大括号轮廓上的粒子（快速汇聚）
+  // isSatellite: 散落粒子但会被磁吸到大括号上（慢速汇聚）
+  constructor(tx, ty, canvasWidth, canvasHeight, type = 'scatter') {
+    this.type = type  // 'shape' | 'satellite' | 'scatter'
+    this.isShape = type === 'shape'
+    this.isSatellite = type === 'satellite'
     this.tx = tx
     this.ty = ty
     this.scatteredX = Math.random() * canvasWidth
@@ -24,16 +28,37 @@ class AntigravityParticle {
     this.floatAmpX = 4 + Math.random() * 6
     this.floatAmpY = 5 + Math.random() * 8
     this.progress = 0
-    this.transitionSpeed = 0.04 + Math.random() * 0.03
-    this.size = isShape ? (Math.random() * 1.3 + 0.4) : (Math.random() * 0.5 + 0.25)
-
-    const colorRand = Math.random()
-    if (colorRand > 0.08) {
-      this.tr = 20; this.tg = 80; this.tb = 240
+    if (type === 'shape') {
+      this.transitionSpeed = 0.04 + Math.random() * 0.03
+    } else if (type === 'satellite') {
+      this.transitionSpeed = 0.003 + Math.random() * 0.006  // 慢速磁吸
     } else {
-      this.tr = 220; this.tg = 20; this.tb = 20
+      this.transitionSpeed = 0
+    }
+    this.size = type === 'shape' ? (Math.random() * 1.3 + 0.4) : (Math.random() * 0.5 + 0.25)
+
+    // 汇聚目标色：赛博霓虹
+    const colorRand = Math.random()
+    if (colorRand > 0.15) {
+      this.tr = 0; this.tg = 220; this.tb = 255   // 霓虹青
+    } else {
+      this.tr = 255; this.tg = 30; this.tb = 180   // 霓虹粉
     }
     this.tAlpha = 0.92
+
+    // 暗色模式下散落粒子颜色 — 每个粒子随机选一种霓虹色
+    const neonPalette = [
+      [0, 255, 255],    // cyan
+      [255, 0, 200],    // hot pink
+      [120, 0, 255],    // neon purple
+      [0, 255, 100],    // neon green
+      [255, 100, 0],    // neon orange
+      [0, 180, 255],    // electric blue
+    ]
+    const pick = neonPalette[Math.floor(Math.random() * neonPalette.length)]
+    this.neonR = pick[0]
+    this.neonG = pick[1]
+    this.neonB = pick[2]
 
     // 散落状态根据主题动态设置
     this.scatterR = 0; this.scatterG = 0; this.scatterB = 0
@@ -42,13 +67,20 @@ class AntigravityParticle {
 
   updateTheme() {
     const isDark = document.documentElement.classList.contains('dark-mode')
-    this.scatterR = isDark ? 255 : 20
-    this.scatterG = isDark ? 255 : 20
-    this.scatterB = isDark ? 255 : 22
+    if (isDark) {
+      this.scatterR = this.neonR
+      this.scatterG = this.neonG
+      this.scatterB = this.neonB
+    } else {
+      this.scatterR = 20
+      this.scatterG = 20
+      this.scatterB = 22
+    }
   }
 
   update(hovered, mousePos, width, height, time) {
-    if (hovered && this.isShape) {
+    const hasTarget = this.isShape || this.isSatellite
+    if (hovered && hasTarget) {
       this.progress += (1 - this.progress) * this.transitionSpeed
     } else {
       this.progress += (0 - this.progress) * 0.04
@@ -72,6 +104,21 @@ class AntigravityParticle {
       const freeY = this.scatteredY + oscY
       targetX = freeX + (shapeX - freeX) * this.progress
       targetY = freeY + (shapeY - freeY) * this.progress
+    } else if (this.isSatellite && hovered) {
+      // 磁力：距离越近力越大，模拟被吸走的感觉
+      const shapeX = this.tx + oscX * 0.25
+      const shapeY = this.ty + oscY * 0.25
+      const dx = shapeX - this.x
+      const dy = shapeY - this.y
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      const minDist = 2
+      if (dist > minDist) {
+        const force = 350 / (dist * dist)  // 距离平方反比，靠近时急速增大
+        this.vx += (dx / dist) * force * 0.016
+        this.vy += (dy / dist) * force * 0.016
+      }
+      targetX = this.x  // 不做额外插值，靠速度驱动
+      targetY = this.y
     } else {
       targetX = this.scatteredX + oscX
       targetY = this.scatteredY + oscY
@@ -80,8 +127,9 @@ class AntigravityParticle {
     const springStrength = 0.07
     this.vx += (targetX - this.x) * springStrength
     this.vy += (targetY - this.y) * springStrength
-    this.vx *= 0.72
-    this.vy *= 0.72
+    const damping = (this.isSatellite && hovered) ? 0.55 : 0.72  // 卫星吸走时阻力更低
+    this.vx *= damping
+    this.vy *= damping
     this.x += this.vx
     this.y += this.vy
 
@@ -194,28 +242,34 @@ export function useHeroParticles() {
     const tempParticles = []
 
     const step = 6.5
+    const shapeTargets = []  // 收集括号轮廓坐标
     for (let y = 0; y < height; y += step) {
       for (let x = 0; x < width; x += step) {
         const idx = (Math.floor(y) * width + Math.floor(x)) * 4
         if (data[idx + 3] > 120) {
-          tempParticles.push(new AntigravityParticle(x, y, width, height, true))
+          tempParticles.push(new AntigravityParticle(x, y, width, height, 'shape'))
+          shapeTargets.push({ x, y })
         }
       }
     }
 
+    // 60% 背景粒子为卫星（慢速磁吸到括号），40% 自由漂浮
     const bgCount = 120
+    const satelliteCount = Math.floor(bgCount * 0.6)
     for (let i = 0; i < bgCount; i++) {
-      tempParticles.push(new AntigravityParticle(0, 0, width, height, false))
+      if (i < satelliteCount && shapeTargets.length > 0) {
+        const target = shapeTargets[Math.floor(Math.random() * shapeTargets.length)]
+        tempParticles.push(new AntigravityParticle(target.x, target.y, width, height, 'satellite'))
+      } else {
+        tempParticles.push(new AntigravityParticle(0, 0, width, height, 'scatter'))
+      }
     }
 
     particles = tempParticles
 
     // 更新所有粒子的主题颜色
-    const isDark = document.documentElement.classList.contains('dark-mode')
     for (const p of particles) {
-      p.scatterR = isDark ? 255 : 20
-      p.scatterG = isDark ? 255 : 20
-      p.scatterB = isDark ? 255 : 22
+      p.updateTheme()
     }
   }
 
@@ -248,11 +302,8 @@ export function useHeroParticles() {
 
   // 监听主题切换
   const themeObserver = new MutationObserver(() => {
-    const isDark = document.documentElement.classList.contains('dark-mode')
     for (const p of particles) {
-      p.scatterR = isDark ? 255 : 20
-      p.scatterG = isDark ? 255 : 20
-      p.scatterB = isDark ? 255 : 22
+      p.updateTheme()
     }
   })
 
