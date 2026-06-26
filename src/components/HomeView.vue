@@ -17,6 +17,18 @@ const heroRef = ref(null)
 const heroParticles = useHeroParticles()
 
 const trackDownload = (platform) => {
+  // 51.la 自定义事件追踪 (LA.track)
+  if (window.LA && typeof window.LA.track === 'function') {
+    let eventName = 'download_mac'
+    if (platform === 'Windows客户端') {
+      eventName = 'download_windows'
+    } else if (platform === 'Chrome插件') {
+      eventName = 'download_plugin'
+    }
+    window.LA.track(eventName)
+  }
+  
+  // 百度统计事件追踪
   if (window._hmt) {
     window._hmt.push(['_trackEvent', '下载', platform])
   }
