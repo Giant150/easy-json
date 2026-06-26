@@ -33,10 +33,12 @@ const copyDir = (src, dest) => {
 console.log('[uTools] Copying dist...')
 copyDir(DIST, OUT)
 
-// 清理 index.html：去除外部脚本、crossorigin 属性、SEO 标签
+// 清理 index.html：去除外部脚本（百度统计、51啦统计）、crossorigin 属性、SEO 标签
 const indexPath = path.join(OUT, 'index.html')
 let html = fs.readFileSync(indexPath, 'utf-8')
 html = html.replace(/<script>[^<]*hm\.baidu\.com[^<]*<\/script>\s*/g, '')
+html = html.replace(/<script[^>]*src="[^"]*51\.la[^"]*"[^>]*><\/script>\s*/g, '')
+html = html.replace(/<script>[^<]*LA\.init[^<]*<\/script>\s*/g, '')
 html = html.replace(/ crossorigin/g, '')
 html = html.replace(/<link rel="canonical"[^>]*>\s*/g, '')
 html = html.replace(/<meta property="og:[^>]*>\s*/g, '')
