@@ -89,7 +89,7 @@
   --diff-removed-border: rgba(200, 40, 40, 0.3);
   --diff-modified-bg: rgba(200, 150, 0, 0.08);
 
-  --error-bg: rgba(200, 40, 40, 0.1);
+  --error-bg: rgba(220, 38, 38, 0.22);
   --error-text: #f48771;
   --success-text: #89d185;
 
@@ -411,7 +411,7 @@ html.popup-mode .action-btn.icon-only {
 /* popup: compact segmented control */
 html.popup-mode .segmented-control {
   --seg-size: 22px;
-  padding: 2px !important;
+  --seg-padding: 2px !important;
 }
 
 html.popup-mode .seg-icon {
@@ -632,6 +632,7 @@ html.popup-mode .app-layout {
 }
 
 .editor-line {
+  position: relative; /* Force WebKit layering for background highlights */
   display: block;
   width: 100%;
   min-width: max-content;

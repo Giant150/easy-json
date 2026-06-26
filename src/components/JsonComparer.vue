@@ -201,7 +201,90 @@ const closeAllTabs = () => {
   nextTick(checkTabsOverflow)
 }
 
-// 从 JSON.parse 错误中提取行列号并修正
+// 🚀 macOS WebKit/Safari 专用的 JSON 语法解析器定位器（用于提取错误行列号）
+const locateJsonError = (text) => {
+  let pos = 0
+  const skipWhitespace = () => {
+    while (pos < text.length && /\s/.test(text[pos])) pos++
+  }
+  const parseValue = () => {
+    skipWhitespace()
+    if (pos >= text.length) throw new Error()
+    const char = text[pos]
+    if (char === '{') { parseObject(); return }
+    if (char === '[') { parseArray(); return }
+    if (char === '"') { parseString(); return }
+    if (char === '-' || (char >= '0' && char <= '9')) { parseNumber(); return }
+    if (text.startsWith("true", pos)) { pos += 4; return }
+    if (text.startsWith("false", pos)) { pos += 5; return }
+    if (text.startsWith("null", pos)) { pos += 4; return }
+    throw new Error()
+  }
+  const parseString = () => {
+    pos++
+    while (pos < text.length) {
+      const char = text[pos]
+      if (char === '"') { pos++; return }
+      if (char === '\\') pos += 2
+      else pos++
+    }
+    throw new Error()
+  }
+  const parseNumber = () => {
+    const start = pos
+    if (text[pos] === '-') pos++
+    while (pos < text.length && /[0-9.eE+-]/.test(text[pos])) pos++
+    if (pos === start) throw new Error()
+  }
+  const parseObject = () => {
+    pos++
+    skipWhitespace()
+    if (text[pos] === '}') { pos++; return }
+    while (pos < text.length) {
+      skipWhitespace()
+      if (text[pos] !== '"') throw new Error()
+      parseString()
+      skipWhitespace()
+      if (text[pos] !== ':') throw new Error()
+      pos++
+      parseValue()
+      skipWhitespace()
+      if (text[pos] === '}') { pos++; return }
+      if (text[pos] !== ',') throw new Error()
+      pos++
+      const savePos = pos
+      skipWhitespace()
+      if (text[pos] === '}') { pos = savePos; throw new Error() }
+    }
+    throw new Error()
+  }
+  const parseArray = () => {
+    pos++
+    skipWhitespace()
+    if (text[pos] === ']') { pos++; return }
+    while (pos < text.length) {
+      parseValue()
+      skipWhitespace()
+      if (text[pos] === ']') { pos++; return }
+      if (text[pos] !== ',') throw new Error()
+      pos++
+      const savePos = pos
+      skipWhitespace()
+      if (text[pos] === ']') { pos = savePos; throw new Error() }
+    }
+    throw new Error()
+  }
+  try {
+    parseValue()
+    skipWhitespace()
+    if (pos < text.length) throw new Error()
+  } catch (err) {
+    return pos
+  }
+  return null
+}
+
+// 从 JSON.parse 错误中提取行列号并修正（兼容 Chrome/V8、Firefox 和 macOS Safari）
 const getErrorLineAndColumn = (error, text) => {
   const msg = error.message
 
@@ -221,6 +304,18 @@ const getErrorLineAndColumn = (error, text) => {
     for (let i = 0; i < pos && i < text.length; i++) {
       if (text[i] === '\n') { line++; col = 1 }
       else { col++ }
+    }
+  }
+
+  // macOS WebKit/Safari 降级兼容：如果在 error.message 中提取不到行列号，使用纯 JS 解析器检测错误位置
+  if (!line && text) {
+    const pos = locateJsonError(text)
+    if (pos !== null) {
+      line = 1; col = 1
+      for (let i = 0; i < pos && i < text.length; i++) {
+        if (text[i] === '\n') { line++; col = 1 }
+        else { col++ }
+      }
     }
   }
 
@@ -1054,12 +1149,12 @@ onMounted(() => {
                 <div v-for="n in leftLinesCount" :key="n" class="edit-line-number" :class="{ 'has-error': activeTab.leftErrorLine === n }">{{ n }}</div>
               </div>
               <div class="textarea-overlay-container" :class="{ 'minify-wrap': isLeftMinified }">
-                <pre
+                <div
                   ref="leftHighlightRef"
                   class="editor-highlight"
                   aria-hidden="true"
                   v-html="highlightedLeft || '<span class=\'placeholder\'>粘贴或输入左侧 JSON...</span>'"
-                ></pre>
+                ></div>
                 <textarea 
                   v-model="activeTab.leftText" 
                   class="edit-textarea" 
@@ -1171,12 +1266,12 @@ onMounted(() => {
                 <div v-for="n in rightLinesCount" :key="n" class="edit-line-number" :class="{ 'has-error': activeTab.rightErrorLine === n }">{{ n }}</div>
               </div>
               <div class="textarea-overlay-container" :class="{ 'minify-wrap': isRightMinified }">
-                <pre
+                <div
                   ref="rightHighlightRef"
                   class="editor-highlight"
                   aria-hidden="true"
                   v-html="highlightedRight || '<span class=\'placeholder\'>粘贴或输入右侧 JSON...</span>'"
-                ></pre>
+                ></div>
                 <textarea 
                   v-model="activeTab.rightText" 
                   class="edit-textarea" 

@@ -1,14 +1,28 @@
+use std::env;
+
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, WindowEvent,
 };
 
+#[tauri::command]
+fn is_installed() -> bool {
+    if let Ok(exe_path) = env::current_exe() {
+        let path_str = exe_path.to_string_lossy();
+        // 检查是否在 /Applications 或 ~/Applications 下
+        path_str.contains("/Applications/")
+    } else {
+        true // 无法判断时默认已安装，不弹窗
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
+        .invoke_handler(tauri::generate_handler![is_installed])
         .setup(|app| {
             let show_item = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;

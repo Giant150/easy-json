@@ -206,34 +206,6 @@ const activeTab = computed(() => {
   return tabs.value.find(t => t.id === activeTabId.value) || tabs.value[0]
 })
 
-const activeIndex = computed(() => {
-  switch (activeTab.value?.viewMode) {
-    case 'text': return 0
-    case 'tree': return 1
-    case 'graph': return 2
-    case 'table': return 3
-    default: return 0
-  }
-})
-
-const segmentedRef = ref(null)
-const indicatorStyle = ref({})
-
-const updateIndicator = () => {
-  nextTick(() => {
-    if (!segmentedRef.value) return
-    const btns = segmentedRef.value.querySelectorAll('.segment-btn')
-    const btn = btns[activeIndex.value]
-    if (!btn) return
-    indicatorStyle.value = {
-      left: btn.offsetLeft + 'px',
-      width: btn.offsetWidth + 'px'
-    }
-  })
-}
-
-watch(activeIndex, updateIndicator)
-onMounted(updateIndicator)
 
 let nextTabId = 2
 
@@ -368,7 +340,90 @@ const closeAllTabs = () => {
 }
 
 
-// 从 JSON.parse 错误中提取行列号（兼容 Chrome/V8 和 Firefox）
+// 🚀 macOS WebKit/Safari 专用的 JSON 语法解析器定位器（用于提取错误行列号）
+const locateJsonError = (text) => {
+  let pos = 0
+  const skipWhitespace = () => {
+    while (pos < text.length && /\s/.test(text[pos])) pos++
+  }
+  const parseValue = () => {
+    skipWhitespace()
+    if (pos >= text.length) throw new Error()
+    const char = text[pos]
+    if (char === '{') { parseObject(); return }
+    if (char === '[') { parseArray(); return }
+    if (char === '"') { parseString(); return }
+    if (char === '-' || (char >= '0' && char <= '9')) { parseNumber(); return }
+    if (text.startsWith("true", pos)) { pos += 4; return }
+    if (text.startsWith("false", pos)) { pos += 5; return }
+    if (text.startsWith("null", pos)) { pos += 4; return }
+    throw new Error()
+  }
+  const parseString = () => {
+    pos++
+    while (pos < text.length) {
+      const char = text[pos]
+      if (char === '"') { pos++; return }
+      if (char === '\\') pos += 2
+      else pos++
+    }
+    throw new Error()
+  }
+  const parseNumber = () => {
+    const start = pos
+    if (text[pos] === '-') pos++
+    while (pos < text.length && /[0-9.eE+-]/.test(text[pos])) pos++
+    if (pos === start) throw new Error()
+  }
+  const parseObject = () => {
+    pos++
+    skipWhitespace()
+    if (text[pos] === '}') { pos++; return }
+    while (pos < text.length) {
+      skipWhitespace()
+      if (text[pos] !== '"') throw new Error()
+      parseString()
+      skipWhitespace()
+      if (text[pos] !== ':') throw new Error()
+      pos++
+      parseValue()
+      skipWhitespace()
+      if (text[pos] === '}') { pos++; return }
+      if (text[pos] !== ',') throw new Error()
+      pos++
+      const savePos = pos
+      skipWhitespace()
+      if (text[pos] === '}') { pos = savePos; throw new Error() }
+    }
+    throw new Error()
+  }
+  const parseArray = () => {
+    pos++
+    skipWhitespace()
+    if (text[pos] === ']') { pos++; return }
+    while (pos < text.length) {
+      parseValue()
+      skipWhitespace()
+      if (text[pos] === ']') { pos++; return }
+      if (text[pos] !== ',') throw new Error()
+      pos++
+      const savePos = pos
+      skipWhitespace()
+      if (text[pos] === ']') { pos = savePos; throw new Error() }
+    }
+    throw new Error()
+  }
+  try {
+    parseValue()
+    skipWhitespace()
+    if (pos < text.length) throw new Error()
+  } catch (err) {
+    return pos
+  }
+  return null
+}
+
+// 从 JSON.parse 错误中提取行列号（兼容 Chrome/V8、Firefox 和 macOS Safari）
 // 并自动修正"缺逗号导致报错偏移一行"的常见误报
 const getErrorLineAndColumn = (error, text) => {
   const msg = error.message
@@ -389,6 +444,18 @@ const getErrorLineAndColumn = (error, text) => {
     for (let i = 0; i < pos && i < text.length; i++) {
       if (text[i] === '\n') { line++; col = 1 }
       else { col++ }
+    }
+  }
+
+  // macOS WebKit/Safari 降级兼容：如果在 error.message 中提取不到行列号，使用纯 JS 解析器检测错误位置
+  if (!line && text) {
+    const pos = locateJsonError(text)
+    if (pos !== null) {
+      line = 1; col = 1
+      for (let i = 0; i < pos && i < text.length; i++) {
+        if (text[i] === '\n') { line++; col = 1 }
+        else { col++ }
+      }
     }
   }
 
@@ -1945,12 +2012,12 @@ onBeforeUnmount(() => {
             
             <div class="textarea-overlay-container" :class="{ 'minify-wrap': isInputMinified }">
               <!-- Syntax highlight overlay (behind textarea) -->
-              <pre
+              <div
                 ref="inputHighlightRef"
                 class="editor-highlight"
                 aria-hidden="true"
                 v-html="highlightedInput || '<span class=\'placeholder\'>在此粘贴或拖入你的 JSON 数据...</span>'"
-              ></pre>
+              ></div>
               <!-- Transparent textarea on top -->
               <textarea
                 ref="textareaRef"
@@ -1976,8 +2043,8 @@ onBeforeUnmount(() => {
         <div class="panel-header">
           <div class="header-left-group">
             <!-- View switch -->
-            <div class="segmented-control" ref="segmentedRef">
-              <div class="segmented-indicator" :style="indicatorStyle"></div>
+            <div class="segmented-control">
+              <div class="segmented-indicator" :class="'pos-' + activeTab.viewMode"></div>
               <button
                 class="segment-btn"
                 :class="{ active: activeTab.viewMode === 'text' }"
@@ -2557,12 +2624,13 @@ onBeforeUnmount(() => {
 /* Segmented Control — json4u style */
 .segmented-control {
   --seg-size: 26px;
+  --seg-padding: 3px;
   position: relative;
   display: inline-flex;
   align-items: center;
   height: calc(var(--seg-size) + 6px);
   background-color: var(--segmented-bg);
-  padding: 3px;
+  padding: var(--seg-padding);
   border-radius: 8px;
   gap: 2px;
 }
@@ -2571,13 +2639,26 @@ onBeforeUnmount(() => {
   position: absolute;
   top: 3px;
   height: var(--seg-size);
+  width: var(--seg-size);
   background-color: var(--segmented-indicator-bg);
   border-radius: 6px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-  transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1),
-              width 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   pointer-events: none;
   z-index: 1;
+}
+
+.segmented-indicator.pos-text {
+  left: var(--seg-padding);
+}
+.segmented-indicator.pos-tree {
+  left: calc(var(--seg-padding) + var(--seg-size) + 2px);
+}
+.segmented-indicator.pos-graph {
+  left: calc(var(--seg-padding) + var(--seg-size) * 2 + 4px);
+}
+.segmented-indicator.pos-table {
+  left: calc(var(--seg-padding) + var(--seg-size) * 3 + 6px);
 }
 
 .segment-btn {

@@ -6,6 +6,7 @@ import HomeView from './components/HomeView.vue'
 import TestView from './components/TestView.vue'
 import { Sun, Moon, Split, Braces, CheckCircle, AlertTriangle, Palette, ArrowUpDown, Space, Zap, ClipboardCheck, Search, Home, Maximize, Clipboard, FlaskConical, Download, X } from 'lucide-vue-next'
 import { useUpdateCheck } from './composables/useUpdateCheck.js'
+import { useInstallCheck } from './composables/useInstallCheck.js'
 
 const currentView = ref('home') // 'home' | 'editor' | 'test'
 const isPopup = ref(false)
@@ -14,6 +15,10 @@ const isUtools = ref(false)
 // ── 版本更新检查 ──
 const { hasUpdate, latestVersion, downloadUrl } = useUpdateCheck()
 const updateDismissed = ref(false)
+
+// ── 首次安装检查（DMG 直接运行 vs 已拖入 Applications） ──
+const { needsInstall } = useInstallCheck()
+const installDismissed = ref(false)
 
 const openInTab = () => {
   const url = chrome.runtime.getURL('index.html?mode=tab')
@@ -199,12 +204,12 @@ onMounted(() => {
     }
   }
   
-  // Restore dark/light preference (localStorage first, then system preference)
+  // Restore dark/light preference (localStorage first, then default to dark mode)
   const savedDark = localStorage.getItem('ej_dark')
   if (savedDark !== null) {
     isDark.value = savedDark === '1'
   } else {
-    isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches
+    isDark.value = true // Default to dark mode
   }
   updateThemeClass()
   
@@ -254,6 +259,22 @@ onMounted(() => {
 </script>
 
 <template>
+  <!-- 首次安装提示：从 DMG 运行时提醒拖入 Applications -->
+  <Transition name="slide-down">
+    <div v-if="needsInstall && !installDismissed" class="install-banner">
+      <div class="install-banner-content">
+        <AlertTriangle class="update-banner-icon" />
+        <span>你正在从安装包直接运行 easyJSON，请将 easyJSON.app 拖入 Applications 文件夹完成安装</span>
+      </div>
+      <div class="update-banner-actions">
+        <button class="install-banner-btn" @click="installDismissed = true">
+          <X class="update-btn-icon" />
+          <span>知道了</span>
+        </button>
+      </div>
+    </div>
+  </Transition>
+
   <!-- 版本更新提示 -->
   <Transition name="slide-down">
     <div v-if="hasUpdate && !updateDismissed" class="update-banner">
@@ -336,9 +357,9 @@ onMounted(() => {
         <button v-if="isPopup" class="sidebar-btn" @click="openInTab" data-tooltip-right="在新标签页中打开（全屏）">
           <Maximize class="sidebar-btn-icon" />
         </button>
-       <!-- <button class="sidebar-btn" @click="goToTest" data-tooltip-right="提取测试">
+       <button class="sidebar-btn" @click="goToTest" data-tooltip-right="提取测试">
           <FlaskConical class="sidebar-btn-icon" />
-        </button>  -->
+        </button> 
       </div>
     </aside>
 
@@ -498,6 +519,44 @@ onMounted(() => {
 .update-close-icon {
   width: 14px;
   height: 14px;
+}
+
+/* ── 安装提示横幅 ── */
+.install-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 16px;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 500;
+  position: relative;
+  z-index: 999;
+}
+.install-banner-content {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.install-banner-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 12px;
+  border-radius: 4px;
+  border: none;
+  background: rgba(255,255,255,0.22);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.install-banner-btn:hover {
+  background: rgba(255,255,255,0.35);
 }
 
 .slide-down-enter-active,

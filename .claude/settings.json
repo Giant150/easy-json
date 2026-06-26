@@ -40,7 +40,18 @@
       "Bash(# Clean up leftover mounts *)",
       "Read(//Volumes/**)",
       "WebSearch",
-      "Bash(chmod +x /Users/apple/GithubProjects/easy-json/scripts/build-universal.sh)"
+      "Bash(chmod +x /Users/apple/GithubProjects/easy-json/scripts/build-universal.sh)",
+      "Bash(rm -f /tmp/test_rw.dmg)",
+      "Bash(touch /Volumes/easyJSON/test_write)",
+      "Bash(sips -g all /Users/apple/GithubProjects/easy-json/src-tauri/icons/icon.icns)",
+      "Bash(sips -g all /Users/apple/GithubProjects/easy-json/src-tauri/icons/source-icon.png)",
+      "Bash(sips -g all /Users/apple/GithubProjects/easy-json/src-tauri/icons/icon.png)",
+      "Bash(iconutil --infolist /Users/apple/GithubProjects/easy-json/src-tauri/icons/icon.icns)",
+      "Bash(icns2png -x /Users/apple/GithubProjects/easy-json/src-tauri/icons/icon.icns)",
+      "Bash(sips -g pixelWidth -g pixelHeight /Users/apple/GithubProjects/easy-json/src-tauri/icons/icon.icns)",
+      "Bash(sips -g all /Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyJSON.app/Contents/Resources/icon.icns)",
+      "Bash(python3 -c \"from PIL import Image; print\\('pillow OK'\\)\")",
+      "Bash(osascript -e 'tell application \"Finder\" to get name of every window')"
     ]
   }
 }

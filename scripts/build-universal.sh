@@ -57,25 +57,53 @@ echo "  ✓ Universal binary installed in .app"
 echo ""
 
 # ── Step 4: Create DMG ──────────────────────────────────────────
-echo "▸ Creating DMG (using srcfolder, macOS 26 compatible)..."
+echo "▸ Creating DMG with Applications shortcut..."
 
 # Clean up any leftover mounts
 hdiutil detach /Volumes/easyJSON 2>/dev/null || true
 sleep 1
 
-# Use srcfolder approach — avoids read-only mount issues on macOS 26
-TMP_DIR="$(mktemp -d /tmp/easyjson_dmg_XXXXXX)"
-mkdir -p "$TMP_DIR"
-cp -R "$APP" "$TMP_DIR/"
 rm -f "$DMG_OUT"
 
-hdiutil create -srcfolder "$TMP_DIR" \
-  -volname "easyJSON" \
-  -format UDZO \
-  -ov \
-  "$DMG_OUT" 2>&1 | tail -1
+# Create writable DMG (layout NONE for macOS 26 compatibility)
+DMG_RW="/tmp/easyjson_rw.dmg"
+rm -f "$DMG_RW"
+hdiutil create -size 70m -layout NONE -fs "HFS+" -volname "easyJSON" -ov "$DMG_RW" 2>&1 | tail -1
 
-rm -rf "$TMP_DIR"
+# Mount read-write
+DEV=$(hdiutil attach "$DMG_RW" -readwrite -noverify -noautofsck 2>&1 | grep '/Volumes/' | awk '{print $1}')
+echo "  Mounted: $DEV"
+
+# Copy .app and create Applications symlink
+cp -R "$APP" /Volumes/easyJSON/
+ln -s /Applications /Volumes/easyJSON/Applications
+
+# Set custom icon positions (app on left, Applications folder on right)
+osascript -e "
+tell application \"Finder\"
+  tell disk \"easyJSON\"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {400, 200, 900, 500}
+    set theViewOptions to the icon view options of container window
+    set arrangement of theViewOptions to not arranged
+    set icon size of theViewOptions to 72
+    set position of item \"easyJSON.app\" to {120, 120}
+    set position of item \"Applications\" to {380, 120}
+    close
+  end tell
+end tell
+" 2>/dev/null || true
+
+# Detach
+hdiutil detach "$DEV" -force 2>&1 | tail -1
+sleep 2
+
+# Convert to compressed read-only DMG
+hdiutil convert "$DMG_RW" -format UDZO -o "$DMG_OUT" 2>&1 | tail -1
+rm -f "$DMG_RW"
 
 echo ""
 echo "========================================="
