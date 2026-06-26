@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, provide, watch } from 'vue'
+import { ref, onMounted, provide, watch, onBeforeUnmount } from 'vue'
 import JsonFormatter from './components/JsonFormatter.vue'
 import JsonComparer from './components/JsonComparer.vue'
 import HomeView from './components/HomeView.vue'
@@ -29,15 +29,24 @@ const openInTab = () => {
 const goToApp = () => {
   currentView.value = 'editor'
   localStorage.setItem('ej_view', 'editor')
+  if (window.location.pathname !== '/') {
+    window.history.pushState(null, '', '/')
+  }
 }
 
 const goToHome = () => {
   currentView.value = 'home'
   localStorage.setItem('ej_view', 'home')
+  if (window.location.pathname !== '/') {
+    window.history.pushState(null, '', '/')
+  }
 }
 
 const goToTest = () => {
   currentView.value = 'test'
+  if (window.location.pathname.replace(/\/$/, '') !== '/test') {
+    window.history.pushState(null, '', '/test')
+  }
 }
 
 const currentTab = ref('format') // 'format' | 'compare'
@@ -163,7 +172,19 @@ const updateSyntaxThemeClass = () => {
 provide('isDark', isDark)
 provide('toggleTheme', toggleTheme)
 
+const handlePopState = () => {
+  const path = window.location.pathname.replace(/\/$/, '')
+  if (path === '/test' || path.endsWith('/test')) {
+    currentView.value = 'test'
+  } else {
+    const savedView = localStorage.getItem('ej_view')
+    currentView.value = savedView === 'editor' ? 'editor' : 'home'
+  }
+}
+
 onMounted(() => {
+  window.addEventListener('popstate', handlePopState)
+
   // uTools 环境：直接进入编辑器，跳过首页
   if (window.__UTOOLS__) {
     isUtools.value = true
@@ -174,25 +195,30 @@ onMounted(() => {
       currentTab.value = savedTab
     }
   } else {
-    const urlParams = new URLSearchParams(window.location.search)
-    const isTab = urlParams.get('mode') === 'tab'
-    const isExtract = urlParams.get('action') === 'extract'
-
-    // Right-click extract: force editor view + format tab
-    if (isExtract) {
-      currentView.value = 'editor'
-      currentTab.value = 'format'
-    } else if (isTab) {
-      currentView.value = 'editor'
+    const path = window.location.pathname.replace(/\/$/, '')
+    if (path === '/test' || path.endsWith('/test')) {
+      currentView.value = 'test'
     } else {
-      const savedView = localStorage.getItem('ej_view')
-      if (savedView === 'editor') {
-        currentView.value = 'editor'
-      }
+      const urlParams = new URLSearchParams(window.location.search)
+      const isTab = urlParams.get('mode') === 'tab'
+      const isExtract = urlParams.get('action') === 'extract'
 
-      const savedTab = localStorage.getItem('ej_tab')
-      if (savedTab === 'format' || savedTab === 'compare') {
-        currentTab.value = savedTab
+      // Right-click extract: force editor view + format tab
+      if (isExtract) {
+        currentView.value = 'editor'
+        currentTab.value = 'format'
+      } else if (isTab) {
+        currentView.value = 'editor'
+      } else {
+        const savedView = localStorage.getItem('ej_view')
+        if (savedView === 'editor') {
+          currentView.value = 'editor'
+        }
+
+        const savedTab = localStorage.getItem('ej_tab')
+        if (savedTab === 'format' || savedTab === 'compare') {
+          currentTab.value = savedTab
+        }
       }
     }
 
@@ -256,6 +282,10 @@ onMounted(() => {
     autoPaste.value = savedAutoPaste === '1'
   }
 })
+
+onBeforeUnmount(() => {
+  window.removeEventListener('popstate', handlePopState)
+})
 </script>
 
 <template>
@@ -295,7 +325,7 @@ onMounted(() => {
   </Transition>
 
   <!-- Home Page View -->
-  <HomeView v-if="currentView === 'home'" @go-to-app="goToApp" />
+  <HomeView v-if="currentView === 'home'" @go-to-app="goToApp" @go-to-test="goToTest" />
 
   <TestView v-else-if="currentView === 'test'" @go-back="goToHome" />
 
@@ -357,9 +387,6 @@ onMounted(() => {
         <button v-if="isPopup" class="sidebar-btn" @click="openInTab" data-tooltip-right="在新标签页中打开（全屏）">
           <Maximize class="sidebar-btn-icon" />
         </button>
-       <button class="sidebar-btn" @click="goToTest" data-tooltip-right="提取测试">
-          <FlaskConical class="sidebar-btn-icon" />
-        </button> 
       </div>
     </aside>
 

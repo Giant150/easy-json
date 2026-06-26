@@ -34,7 +34,7 @@ const trackDownload = (platform) => {
   }
 }
 
-const emit = defineEmits(['go-to-app'])
+const emit = defineEmits(['go-to-app', 'go-to-test'])
 
 const openFaq = ref(null)
 
@@ -980,7 +980,14 @@ onBeforeUnmount(() => {
     <footer class="home-footer">
       <div class="home-footer-inner">
         <div class="footer-brand">
-          <img src="/images/logo.png" width="20" height="20" alt="easyJSON" style="opacity: 0.5; filter: grayscale(1);" />
+          <img 
+            src="/images/logo.png" 
+            width="20" 
+            height="20" 
+            alt="easyJSON" 
+            class="footer-logo-btn"
+            @click="emit('go-to-test')" 
+          />
           <span>© 2026 easyJSON</span>
         </div>
         <div class="footer-links">
@@ -1403,7 +1410,10 @@ onBeforeUnmount(() => {
 .dark-mode .home-footer{border-top-color:rgba(255,255,255,0.04)}
 .home-footer-inner{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:1160px;padding:0 24px}
 .footer-brand{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted)}
-.dark-mode .footer-brand img{filter:grayscale(1) invert(0.8) !important;opacity:0.5 !important}
+.footer-logo-btn{opacity:0.5;filter:grayscale(1);cursor:pointer;transition:all 0.2s ease}
+.footer-logo-btn:hover{opacity:0.95;filter:grayscale(0)}
+.dark-mode .footer-logo-btn{filter:grayscale(1) invert(0.8);opacity:0.5}
+.dark-mode .footer-logo-btn:hover{filter:invert(0.8);opacity:0.95}
 .footer-links{display:flex;gap:20px}
 .footer-link{font-size:12px;color:var(--text-muted);text-decoration:none;transition:color 0.15s}
 .footer-link:hover{color:var(--text-primary)}
