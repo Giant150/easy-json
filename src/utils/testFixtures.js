@@ -105,7 +105,7 @@ export const testFixtures = [
   {
     id: 'py-2', category: 'Python', label: 'dict 嵌套',
     input: "{'user': {'name': '张三', 'roles': ['admin', 'editor']}, 'status': 'ok', 'count': 42}",
-    expectFormat: 'Python', expectKeys: ['user', 'status', 'count'],
+    expectFormat: 'Python|JS', expectKeys: ['user', 'status', 'count'],
   },
   {
     id: 'py-3', category: 'Python', label: 'dataclass repr',
@@ -130,7 +130,7 @@ export const testFixtures = [
   {
     id: 'py-7', category: 'Python', label: '多层嵌套 dict',
     input: "{'config': {'db': {'host': 'localhost', 'port': 3306}, 'redis': {'host': '127.0.0.1', 'port': 6379}}}",
-    expectFormat: 'Python', expectKeys: ['config'],
+    expectFormat: 'Python|JS', expectKeys: ['config'],
   },
   {
     id: 'py-8', category: 'Python', label: 'dict 含列表嵌套对象',

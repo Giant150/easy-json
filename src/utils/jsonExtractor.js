@@ -575,18 +575,32 @@ export const parseJavaValue = (text, pos) => {
     return [val, j + 1]
   }
 
-  // 数组: [Item{...}, Item{...}]
+  // 数组: [A, B, C] 或 [Item{...}, Item{...}]
   if (ch === '[') {
     const arr = []
     let j = i + 1
     while (j < text.length && text[j] !== ']') {
       while (j < text.length && (text[j] === ' ' || text[j] === ',')) j++
       if (text[j] === ']') break
-      const [val, end] = parseJavaValue(text, j)
-      arr.push(val)
-      j = end
-      while (j < text.length && text[j] === ' ') j++
-      if (text[j] === ',') j++
+      // 找元素边界：扫描到深度 0 的 , 或 ]
+      let elemEnd = j
+      let d = 0
+      while (elemEnd < text.length) {
+        const ec = text[elemEnd]
+        if (ec === '{' || ec === '[' || ec === '(') d++
+        else if (ec === '}' || ec === ']' || ec === ')') {
+          if (d === 0) break
+          d--
+        } else if (ec === ',' && d === 0) break
+        elemEnd++
+      }
+      // 截取元素子串独立解析，避免裸字符串解析器跨元素边界
+      const elemStr = text.substring(j, elemEnd).trim()
+      if (elemStr) {
+        const [val] = parseJavaValue(elemStr, 0)
+        arr.push(val)
+      }
+      j = elemEnd
     }
     return [arr, j + 1]
   }
@@ -615,11 +629,16 @@ export const parseJavaValue = (text, pos) => {
     return [text.substring(i + 1, j), j + 1]
   }
 
-  // 数字
-  const numMatch = text.substring(i).match(/^-?\d+(\.\d+)?([eE][+-]?\d+)?/)
+  // 数字（排除 ISO 日期 2024-01-15T09:30:00、IP 地址 0.0.0.0、版本号 1.2.3 等）
+  const afterNum = text.substring(i)
+  const numMatch = afterNum.match(/^-?\d+(\.\d+)?([eE][+-]?\d+)?/)
   if (numMatch) {
-    const n = Number(numMatch[0])
-    return [isNaN(n) ? numMatch[0] : n, i + numMatch[0].length]
+    const after = afterNum.substring(numMatch[0].length)
+    // 后面是 -数字 → ISO 日期；或 .数字 → IP/版本号。都当字符串处理
+    if (!/^-\d/.test(after) && !/^\.\d/.test(after)) {
+      const n = Number(numMatch[0])
+      return [isNaN(n) ? numMatch[0] : n, i + numMatch[0].length]
+    }
   }
 
   // 裸字符串值（到逗号或右括号为止）
@@ -634,6 +653,7 @@ export const parseJavaValue = (text, pos) => {
     } else if (c === ',' && depth === 0) {
       // 前瞻：逗号后到下一个逗号/右括号之间是否有 = 号？
       // 有 → 这是 key=value 分隔符；没有 → 逗号是值的一部分（如 v_sstime,v_setime）
+      // 但如果逗号后紧跟的是 ] 或 }，说明是数组/对象元素分隔符
       let hasEquals = false
       let la = j + 1
       let laDepth = 0
@@ -648,6 +668,8 @@ export const parseJavaValue = (text, pos) => {
         la++
       }
       if (hasEquals) break
+      // 逗号后是 ] 或 }，说明是数组/嵌套对象内的元素分隔符
+      if (text[la] === ']' || text[la] === '}') break
     }
     j++
   }
@@ -695,20 +717,43 @@ export const convertJavaToJson = (text) => {
       if (!inner.includes('=')) return null
       // Guard: [...] => ... is PHP print_r, not Java
       if (/\[[^\]]+\]\s*=>/.test(inner)) return null
+      // Guard: 单引号值（如 username='zhangsan'）是 Python 特征，非 Java
+      if (/=\s*'[^']*'/.test(inner) && !/Optional\[/.test(inner)) return null
     }
     const [obj] = parseJavaObject(trimmed, start, closeCh)
     return JSON.stringify(obj, null, 2)
   }
   // 纯 HashMap: {key=val, ...}
-  if (trimmed.startsWith('{') && trimmed.endsWith('}') && trimmed.includes('=') && !trimmed.includes(':')) {
-    const [obj] = parseJavaObject(trimmed, 1, '}')
-    return JSON.stringify(obj, null, 2)
+  // 用 key=value 的 = 号数量 vs JSON key:value 的 : 号数量来判断
+  // 避免日期/URL 中的 : 造成误判
+  if (trimmed.startsWith('{') && trimmed.endsWith('}') && trimmed.includes('=')) {
+    const eqCount = (trimmed.match(/[{,]\s*\w[\w.]*\s*=/g) || []).length
+    const colonCount = (trimmed.match(/[{,]\s*"?[a-zA-Z_$][\w.$]*"?\s*:/g) || []).length
+    if (eqCount >= colonCount && eqCount > 0) {
+      const [obj] = parseJavaObject(trimmed, 1, '}')
+      return JSON.stringify(obj, null, 2)
+    }
   }
-  // Java 数组/List toString: [{key=val, ...}, {key=val, ...}]
-  if (trimmed.startsWith('[') && trimmed.endsWith(']') && trimmed.includes('=') && !trimmed.includes(':')) {
-    const [result] = parseJavaValue(trimmed, 0)
-    if (result !== null && typeof result === 'object') {
-      return JSON.stringify(result, null, 2)
+  // Java 数组/List toString: [{key=val, ...}, {key=val, ...}] 或 [key=val, key=val]
+  if (trimmed.startsWith('[') && trimmed.endsWith(']') && trimmed.includes('=')) {
+    const eqCount = (trimmed.match(/[{,]\s*\w[\w.]*\s*=/g) || []).length
+    const colonCount = (trimmed.match(/[{,]\s*"?[a-zA-Z_$][\w.$]*"?\s*:/g) || []).length
+    if (eqCount >= colonCount && eqCount > 0) {
+      const [result] = parseJavaValue(trimmed, 0)
+      if (result !== null && typeof result === 'object') {
+        // 如果数组所有元素都是 key=value 字符串 → 转成对象
+        if (Array.isArray(result) && result.every(e => typeof e === 'string' && e.includes('='))) {
+          const obj = {}
+          for (const e of result) {
+            const eqIdx = e.indexOf('=')
+            const key = e.substring(0, eqIdx).trim()
+            const [val] = parseJavaValue(e.substring(eqIdx + 1).trim(), 0)
+            obj[key] = val
+          }
+          return JSON.stringify(obj, null, 2)
+        }
+        return JSON.stringify(result, null, 2)
+      }
     }
   }
   return null
@@ -744,7 +789,11 @@ export const convertPythonToJson = (text) => {
   // 检测是否看起来像 Python 格式
   const hasPythonTraits = (cleaned.includes("'") && (cleaned.startsWith('{') || cleaned.startsWith('[') || cleaned.startsWith('(')))
     || /\bTrue\b|\bFalse\b|\bNone\b/.test(cleaned)
+  // 如果只有单引号而没有 Python 关键字/结构，可能是 JS/TS 单引号写法，留给 JS 解析器
+  const hasPythonKeywords = /\bTrue\b|\bFalse\b|\bNone\b/.test(cleaned)
+  const hasPythonStruct = /OrderedDict|defaultdict/.test(cleaned) || /^[A-Z]\w*\(.+\)$/.test(cleaned)
   if (!hasPythonTraits) return null
+  if (!hasPythonKeywords && !hasPythonStruct && !odMatch) return null
 
   try {
     // Python → JS 语法转换
@@ -1148,6 +1197,20 @@ export const tryPropertiesToJson = (text) => {
   const hasEquals = lines.some(l => /^\s*[\w][\w.-]*\s*=/.test(l.trim()))
   if (!hasEquals) return null
 
+  // 区分 TOML：如果大部分值用引号包裹（如 key = "val"），则是 TOML 而非 Properties
+  let quotedVals = 0, bareVals = 0
+  for (const line of lines) {
+    const m = line.trim().match(kvRe)
+    if (m) {
+      const v = m[2].trim()
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) quotedVals++
+      else if (v) bareVals++
+    }
+  }
+  const hasSection = lines.some(l => sectionRe.test(l.trim()))
+  if (hasSection && quotedVals > 0) return null  // 有 section + 引号值 → TOML
+  if (quotedVals >= bareVals && quotedVals > 0) return null  // 大部分是引号值 → TOML
+
   try {
     const result = {}
     let current = result
@@ -1284,7 +1347,23 @@ export const tryRepairJson = (text) => {
 
 // 主提取函数，返回 { json, format } 或抛异常
 export const extractJsonFromText = (text) => {
-  const trimmed = text.trim()
+  let trimmed = text.trim()
+
+  // ── Pre-process: 剥离 Markdown 代码围栏 ``` ... ``` ──
+  // 标准格式：围栏独占一行（有换行分隔）
+  if (/^```[\w-]*\s*\r?\n/.test(trimmed) && /\r?\n```\s*$/.test(trimmed)) {
+    let s = trimmed
+    s = s.replace(/^```[\w-]*\s*\r?\n/, '')
+    s = s.replace(/\r?\n```\s*$/, '')
+    if (s.trim()) trimmed = s.trim()
+  }
+  // 内联格式：围栏和内容在同一行，如 ```ClassName{...}```（不加语言标识，否则走标准分支）
+  const inlineFence = trimmed.match(/^```\s*([\s\S]+?)\s*```\s*$/)
+  if (inlineFence) {
+    const inner = inlineFence[1].trim()
+    // 确保内容不是语言标识（如 ```java```）
+    if (inner && !/^[\w-]+$/.test(inner)) trimmed = inner
+  }
 
   // ── Pre-process: MongoDB Shell 类型 → 标准 JSON ──
   const mongoResult = tryMongoShellToJson(trimmed)
@@ -1298,8 +1377,21 @@ export const extractJsonFromText = (text) => {
   const goMapResult = tryGoMapToJson(trimmed)
   if (goMapResult) return { json: goMapResult, format: 'Go map' }
 
+  // ── Pre-process: JSONP 回调包裹剥离（jQuery1123({...}) 等） ──
+  // 注意：OrderedDict(...)/defaultdict(...) 不是 JSONP，是 Python
+  const jsonpRe = /^[a-zA-Z_$][\w.$]*\s*\(\s*([\s\S]*)\s*\);?\s*$/
+  const jsonpMatch = trimmed.match(jsonpRe)
+  const isPythonWrapper = /^(OrderedDict|defaultdict)\s*\(/i.test(trimmed)
+  if (jsonpMatch && !isPythonWrapper) {
+    const inner = jsonpMatch[1].trim()
+    const jsonpResult = tryParseCandidate(inner)
+    if (jsonpResult) return { json: jsonpResult, format: 'JS 对象' }
+  }
+
   // ── Pre-process: JSONC/JSON5 注释剥离后再解析 ──
-  if (/\/\/|\/\*/.test(trimmed)) {
+  // 排除 URL 中的 :// 误判为注释
+  const hasRealComment = /(?<!:)\/\//.test(trimmed) || /\/\*/.test(trimmed)
+  if (hasRealComment) {
     const noComment = stripJsonComments(trimmed)
     const commentResult = tryParseCandidate(noComment)
     if (commentResult) return { json: commentResult, format: 'JSONC' }
@@ -1327,6 +1419,10 @@ export const extractJsonFromText = (text) => {
   const yamlResult = tryYamlToJson(text)
   if (yamlResult) return { json: yamlResult, format: 'YAML' }
 
+  // ── Properties / .env / INI (before TOML to avoid misdetection) ──
+  const propsResult = tryPropertiesToJson(text)
+  if (propsResult) return { json: propsResult, format: 'Properties' }
+
   // ── TOML ──
   const tomlResult = tryTomlToJson(text)
   if (tomlResult) return { json: tomlResult, format: 'TOML' }
@@ -1342,10 +1438,6 @@ export const extractJsonFromText = (text) => {
   // ── Markdown Table ──
   const mdResult = tryMarkdownTableToJson(text)
   if (mdResult) return { json: mdResult, format: 'Markdown Table' }
-
-  // ── Properties / .env / INI ──
-  const propsResult = tryPropertiesToJson(text)
-  if (propsResult) return { json: propsResult, format: 'Properties' }
 
   // ── PHP print_r / var_export ──
   const phpResult = tryPhpPrintRToJson(text)

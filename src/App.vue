@@ -155,6 +155,9 @@ const updateSyntaxThemeClass = () => {
   }
 }
 
+provide('isDark', isDark)
+provide('toggleTheme', toggleTheme)
+
 onMounted(() => {
   // uTools 环境：直接进入编辑器，跳过首页
   if (window.__UTOOLS__) {
@@ -283,6 +286,9 @@ onMounted(() => {
         <div class="sidebar-logo" data-tooltip-right="easyJSON" @click="goToHome" style="cursor: pointer;">
           <img src="/images/logo.png" class="sidebar-logo-icon" alt="easyJSON" />
         </div>
+        <button v-if="!isUtools" class="sidebar-btn" @click="goToHome" data-tooltip-right="返回主页">
+          <Home class="sidebar-btn-icon" />
+        </button>
         <button
           class="sidebar-btn sidebar-nav-btn"
           :class="{ active: currentTab === 'format' }"
@@ -332,10 +338,7 @@ onMounted(() => {
         </button>
        <!-- <button class="sidebar-btn" @click="goToTest" data-tooltip-right="提取测试">
           <FlaskConical class="sidebar-btn-icon" />
-        </button>-->
-        <button v-if="!isUtools" class="sidebar-btn" @click="goToHome" data-tooltip-right="返回主页">
-          <Home class="sidebar-btn-icon" />
-        </button>
+        </button> -->
       </div>
     </aside>
 

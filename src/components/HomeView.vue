@@ -1,11 +1,15 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, computed } from 'vue'
+import { ref, onMounted, onBeforeUnmount, computed, inject } from 'vue'
 import {
   Braces, Split, Zap, Lock, ShieldCheck, Eye, ArrowRight,
   ChevronDown, ChevronRight, FileCode, Layers, Table2, Network, ListTree,
   ClipboardPaste, HelpCircle, Chrome, Laptop, Terminal,
-  Check, Plus, X, ArrowUpDown, MousePointerClick, RefreshCw
+  Check, Plus, X, ArrowUpDown, MousePointerClick, RefreshCw,
+  Sun, Moon
 } from 'lucide-vue-next'
+
+const isDark = inject('isDark')
+const toggleTheme = inject('toggleTheme')
 import { extractJsonFromText } from '../utils/jsonExtractor.js'
 import { useHeroParticles } from '../composables/useHeroParticles.js'
 
@@ -336,11 +340,11 @@ const tryFormat = (key) => {
 const diffMode = ref('semantic') // 'text' | 'semantic'
 
 // ─── Simulated Multi-View Explorer State ───
-const activeViewType = ref('code')
+const activeViewType = ref('graph')
 const multiViews = [
+  { key: 'graph', name: '拓扑图谱', icon: Network, img: '/images/拓扑view.png', desc: '脑图式结构可视化，复杂关联一目了然' },
   { key: 'code', name: '代码视图', icon: FileCode, img: '/images/codeview.png', desc: 'Premium 语法高亮，格式化 / 压缩 / 转义一键切换' },
   { key: 'tree', name: '树形视图', icon: ListTree, img: '/images/treeview.png', desc: '任意层级一键折叠展开，按节点快速探索深层结构' },
-  { key: 'graph', name: '拓扑图谱', icon: Network, img: '/images/拓扑view.png', desc: '脑图式结构可视化，复杂关联一目了然' },
   { key: 'table', name: '表格视图', icon: Table2, img: '/images/tableview.png', desc: '扁平键值对，像 Excel 一样检索、排序、导出' },
 ]
 const activeMultiView = computed(() => multiViews.find(v => v.key === activeViewType.value))
@@ -458,13 +462,17 @@ onBeforeUnmount(() => {
         <!-- Right: CTA + GitHub -->
         <div class="home-nav-right">
           <button class="home-btn-primary" @click="$emit('go-to-app')" id="home-open-app-btn">
-            Editor
+            进入
           </button>
           <a href="https://github.com/chengxy-nds/easy-json" target="_blank" class="home-nav-ghost-btn" title="GitHub">
             <svg fill="currentColor" role="img" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" class="home-nav-gh-icon">
               <path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/>
             </svg>
           </a>
+          <button class="home-nav-theme-btn" @click="toggleTheme" :title="isDark ? '切换至浅色' : '切换至深色'">
+            <Sun v-if="isDark" :size="16" />
+            <Moon v-else :size="16" />
+          </button>
         </div>
       </nav>
     </header>
@@ -1043,6 +1051,10 @@ onBeforeUnmount(() => {
 .dark-mode .home-nav-ghost-btn:hover{background:rgba(255,255,255,0.15)}
 .home-nav-ghost-btn:active{transform:scale(0.96)}
 .home-nav-gh-icon{width:16px;height:16px}
+.home-nav-theme-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:none;border-radius:8px;color:var(--text-secondary);background:rgba(0,0,0,0.05);cursor:pointer;transition:all 0.2s cubic-bezier(0.16,1,0.3,1)}
+.dark-mode .home-nav-theme-btn{background:rgba(255,255,255,0.08)}
+.home-nav-theme-btn:hover{color:var(--text-primary);background:rgba(0,0,0,0.1);transform:scale(1.04)}
+.dark-mode .home-nav-theme-btn:hover{background:rgba(255,255,255,0.15)}
 .home-btn-primary{display:inline-flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.85);color:#fafafa;font-size:var(--nav-btn-fs);font-weight:500;border:none;border-radius:8px;padding:0 16px;height:30px;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.1);transition:all 0.2s cubic-bezier(0.16,1,0.3,1);white-space:nowrap}
 .dark-mode .home-btn-primary{background:rgba(255,255,255,0.15);color:var(--text-primary);box-shadow:none}
 .home-btn-primary:hover{background:rgba(0,0,0,0.92);transform:translateY(-0.5px);box-shadow:0 3px 8px rgba(0,0,0,0.16)}
@@ -1128,7 +1140,7 @@ onBeforeUnmount(() => {
 .code-mockup-grid{display:grid;grid-template-columns:1fr auto 1fr;align-items:stretch;background:rgba(255,255,255,0.2);min-height:300px}
 .dark-mode .code-mockup-grid{background:rgba(30,34,42,0.2)}
 .mockup-pane{display:flex;flex-direction:column;padding:16px;min-width:0;box-sizing:border-box}
-.mockup-pane.output-pane{background:rgba(245,245,247,0.3);border-left:1px solid rgba(0,0,0,0.05)}
+.mockup-pane.output-pane{background:rgba(245,245,247,0.3);}
 .dark-mode .mockup-pane.output-pane{background:rgba(35,37,46,0.3);}
 .pane-title{display:flex;align-items:center;gap:8px;font-size:10.5px;font-weight:600;font-family:var(--font-mono);color:var(--text-muted);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:12px;height:20px}
 .extracted-format-badge{color:var(--text-secondary);background:rgba(0,0,0,0.05);padding:1px 7px;border-radius:4px;font-weight:600;font-family:var(--font-mono);font-size:10px;text-transform:uppercase;letter-spacing:0.04em}
@@ -1147,9 +1159,22 @@ onBeforeUnmount(() => {
 .dark-mode .parsing-overlay{background:rgba(30,34,42,0.6)}
 .scanner-line{width:80%;height:2px;background:linear-gradient(90deg,transparent,var(--accent),transparent);animation:scan 1s infinite alternate}
 @keyframes scan{from{transform:translateY(-20px)}to{transform:translateY(20px)}}
-.pane-code{font-family:var(--font-mono);font-size:12.5px;line-height:1.55;margin:0;white-space:pre-wrap;word-break:break-all}
+.pane-code{font-family:var(--font-mono);font-size:12.5px;line-height:1.55;margin:0;white-space:pre-wrap;word-break:break-all;color:var(--text-primary)}
 .error-code-style{color:#ff3b30;font-style:italic;font-size:11.5px}
 .empty-code-style{color:var(--text-muted)}
+/* Dark mode JSON syntax highlight (HomeView standalone) */
+.dark-mode .pane-code .json-key,
+.dark-mode .popup-json-code .json-key{color:#fb923c}
+.dark-mode .pane-code .json-string,
+.dark-mode .popup-json-code .json-string{color:#60a5fa}
+.dark-mode .pane-code .json-number,
+.dark-mode .popup-json-code .json-number{color:#fb923c}
+.dark-mode .pane-code .json-bool,
+.dark-mode .popup-json-code .json-bool{color:#60a5fa}
+.dark-mode .pane-code .json-null,
+.dark-mode .popup-json-code .json-null{color:#94a3b8}
+.dark-mode .pane-code .json-punct,
+.dark-mode .popup-json-code .json-punct{color:#94a3b8}
 
 .flow-arrow-wrap{display:flex;align-items:center;justify-content:center;padding:0 12px;background:rgba(248,248,250,0.3)}
 .dark-mode .flow-arrow-wrap{background:transparent}
@@ -1199,11 +1224,11 @@ onBeforeUnmount(() => {
 .multiview-section{width:100%}
 
 /* View Switcher Card */
-.mv-viewer-card{width:100%;max-width:860px;margin:0 auto;backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border:1px solid rgba(255,255,255,0.5);border-radius:12px;overflow:hidden;box-shadow:var(--glass-shadow-lg)}
+.mv-viewer-card{width:100%;max-width:1100px;margin:0 auto;backdrop-filter:blur(24px) saturate(180%);-webkit-backdrop-filter:blur(24px) saturate(180%);border-radius:12px;overflow:hidden;}
 .dark-mode .mv-viewer-card{border-color:rgba(255,255,255,0.06);}
 
 /* Segmented Control */
-.mv-segmented-bar{display:flex;justify-content:center;padding:16px 20px 0}
+.mv-segmented-bar{display:flex;justify-content:center;padding:12px 20px 0}
 .mv-segmented{position:relative;display:inline-flex;background:var(--segmented-bg, rgba(0,0,0,0.04));border-radius:8px;padding:3px;gap:2px}
 .dark-mode .mv-segmented{background:rgba(255,255,255,0.04)}
 .mv-seg-btn{position:relative;z-index:1;display:flex;align-items:center;gap:6px;padding:7px 16px;border:none;background:transparent;color:var(--text-secondary);font-size:12.5px;font-weight:500;font-family:inherit;border-radius:6px;cursor:pointer;transition:color 0.2s;white-space:nowrap}
@@ -1212,14 +1237,14 @@ onBeforeUnmount(() => {
 .mv-seg-icon{width:14px;height:14px}
 .mv-seg-indicator{position:absolute;top:3px;height:calc(100% - 6px);border-radius:6px;background:rgba(255,255,255,0.9);box-shadow:0 1px 3px rgba(0,0,0,0.06);transition:left 0.25s cubic-bezier(0.16,1,0.3,1),width 0.25s cubic-bezier(0.16,1,0.3,1);z-index:0}
 .dark-mode .mv-seg-indicator{background:rgba(80,80,90,0.8);box-shadow:0 1px 3px rgba(0,0,0,0.2)}
-/* Indicator positions — approximate, based on 4 equal-width segments */
-.mv-seg-pos--code{left:3px;width:calc(25% - 3.5px)}
-.mv-seg-pos--tree{left:calc(25% + 1px);width:calc(25% - 3.5px)}
-.mv-seg-pos--graph{left:calc(50% + 1px);width:calc(25% - 3.5px)}
+/* Indicator positions — based on 4 equal-width segments */
+.mv-seg-pos--graph{left:3px;width:calc(25% - 3.5px)}
+.mv-seg-pos--code{left:calc(25% + 1px);width:calc(25% - 3.5px)}
+.mv-seg-pos--tree{left:calc(50% + 1px);width:calc(25% - 3.5px)}
 .mv-seg-pos--table{left:calc(75% + 1px);width:calc(25% - 3.5px)}
 
 /* Screenshot */
-.mv-screenshot-area{position:relative;margin:16px 20px 0;border-radius:8px;overflow:hidden;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.04);min-height:300px}
+.mv-screenshot-area{position:relative;margin:16px 0px 0;border-radius:8px;overflow:hidden;background:rgba(0,0,0,0.02);border:1px solid rgba(0,0,0,0.04);min-height:460px}
 .dark-mode .mv-screenshot-area{background:rgba(0,0,0,0.15);border-color:rgba(255,255,255,0.03)}
 .mv-screenshot{width:100%;height:auto;display:block}
 
@@ -1228,7 +1253,7 @@ onBeforeUnmount(() => {
 .mv-fade-enter-from,.mv-fade-leave-to{opacity:0}
 
 /* Description */
-.mv-view-desc{text-align:center;font-size:13px;color:var(--text-secondary);padding:14px 20px 20px;margin:0;line-height:1.5}
+.mv-view-desc{text-align:center;font-size:14px;color:var(--text-secondary);padding:10px 20px 16px;margin:0;line-height:1.5}
 
 /* ═══ MULTI-TAB ═══ */
 .tabs-section{width:100%}
@@ -1401,6 +1426,11 @@ onBeforeUnmount(() => {
   .showcase-content,.interactive-showcase-section.reverse .showcase-content{grid-template-columns:1fr;gap:32px}
   .mv-cards{grid-template-columns:repeat(2,1fr)}
   .tabs-feature-row{grid-template-columns:1fr}
+  .hero-download-dropdown{flex-direction:column;gap:8px;padding:12px;left:auto;right:0;transform:none}
+  .hero-dl-card{width:100%;min-width:180px;flex-direction:row;text-align:left;padding:10px 12px;gap:10px;align-items:center}
+  .hero-dl-card-icon{width:28px;height:28px;margin-bottom:0}
+  .hero-dl-card-desc{display:none}
+  .hero-dl-card-meta{font-size:9px}
 }
 @media(max-width:990px){.home-nav-links{display:none}}
 @media(max-width:860px){

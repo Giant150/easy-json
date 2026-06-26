@@ -1,6 +1,6 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { Play, CheckCircle, XCircle, ChevronDown, ChevronRight, RotateCcw } from 'lucide-vue-next'
+import { Play, CheckCircle, XCircle, ChevronDown, ChevronRight, RotateCcw, Clipboard, ClipboardCheck } from 'lucide-vue-next'
 import { testFixtures, testCategories } from '../utils/testFixtures.js'
 import { extractJsonFromText } from '../utils/jsonExtractor.js'
 
@@ -9,8 +9,27 @@ const emit = defineEmits(['go-back'])
 const activeCategory = ref('all')
 const expandedId = ref(null)
 const isRunningAll = ref(false)
+const copiedId = ref(null)  // 记录刚复制的是哪个字段
 
 const results = ref({})
+
+async function copyText(text, id) {
+  try {
+    await navigator.clipboard.writeText(text)
+    copiedId.value = id
+    setTimeout(() => { copiedId.value = null }, 1500)
+  } catch {
+    // fallback
+    const ta = document.createElement('textarea')
+    ta.value = text
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    document.body.removeChild(ta)
+    copiedId.value = id
+    setTimeout(() => { copiedId.value = null }, 1500)
+  }
+}
 
 const filteredTests = computed(() => {
   if (activeCategory.value === 'all') return testFixtures
@@ -31,7 +50,8 @@ function runSingle(tc) {
   try {
     const { json, format } = extractJsonFromText(tc.input)
     const parsed = JSON.parse(json)
-    const formatOk = format.includes(tc.expectFormat) || tc.expectFormat.includes(format)
+    const expectedFormats = tc.expectFormat.split('|')
+    const formatOk = expectedFormats.some(ef => format.includes(ef) || ef.includes(format))
     const keysOk = !tc.expectKeys || tc.expectKeys.every(k => k in parsed)
     results.value[tc.id] = { pass: formatOk && keysOk, format, json, error: null, formatOk, keysOk }
   } catch (e) {
@@ -137,7 +157,13 @@ function getStatus(id) {
 
         <div v-if="expandedId === tc.id" class="test-card-detail">
           <div class="detail-section">
-            <div class="detail-label">输入</div>
+            <div class="detail-label">
+              输入
+              <button class="detail-copy-btn" @click.stop="copyText(tc.input, tc.id + '-input')" :title="copiedId === tc.id + '-input' ? '已复制' : '复制输入'">
+                <ClipboardCheck v-if="copiedId === tc.id + '-input'" :size="12" class="copy-icon-done" />
+                <Clipboard v-else :size="12" />
+              </button>
+            </div>
             <pre class="detail-code input-code">{{ tc.input }}</pre>
           </div>
           <div class="detail-row">
@@ -161,6 +187,10 @@ function getStatus(id) {
                 <code class="detail-tag" :class="{ 'tag-pass': results[tc.id].formatOk, 'tag-fail': !results[tc.id].formatOk }">
                   {{ results[tc.id].format }}
                 </code>
+                <button class="detail-copy-btn" @click.stop="copyText(results[tc.id].json, tc.id + '-output')" :title="copiedId === tc.id + '-output' ? '已复制' : '复制输出'">
+                  <ClipboardCheck v-if="copiedId === tc.id + '-output'" :size="12" class="copy-icon-done" />
+                  <Clipboard v-else :size="12" />
+                </button>
               </div>
               <pre class="detail-code output-code">{{ results[tc.id].json }}</pre>
             </div>
@@ -174,7 +204,8 @@ function getStatus(id) {
 <style scoped>
 .test-page {
   min-height: 100vh;
-  color: var(--text-primary, #e6edf3);
+  background: var(--bg-app);
+  color: var(--text-primary);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   padding: 0;
 }
@@ -187,30 +218,31 @@ function getStatus(id) {
   align-items: center;
   justify-content: space-between;
   padding: 16px 24px;
-  border-bottom: 1px solid var(--border-color, #21262d);
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border-color);
 }
 .test-header-left { display: flex; align-items: center; gap: 12px; }
 .test-header-right { display: flex; align-items: center; gap: 10px; }
 
 .test-back-btn {
   background: none;
-  border: 1px solid var(--border-color, #30363d);
-  color: var(--text-secondary, #8b949e);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
   padding: 4px 12px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 13px;
   transition: all 0.15s;
 }
-.test-back-btn:hover { color: var(--text-primary, #e6edf3); border-color: var(--text-secondary, #8b949e); }
+.test-back-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); }
 
-.test-title { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.02em; }
-.test-count { font-size: 12px; color: var(--text-secondary, #8b949e); font-family: 'JetBrains Mono', monospace; }
+.test-title { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -0.02em; color: var(--text-primary); }
+.test-count { font-size: 12px; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace; }
 
 .test-stats { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; font-family: 'JetBrains Mono', monospace; }
 .stat-pass { color: #3fb950; }
 .stat-fail { color: #f85149; }
-.stat-total { color: var(--text-secondary, #8b949e); }
+.stat-total { color: var(--text-secondary); }
 
 .test-action-btn {
   display: inline-flex;
@@ -220,7 +252,7 @@ function getStatus(id) {
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
-  border: 1px solid var(--border-color, #30363d);
+  border: 1px solid var(--border-color);
   cursor: pointer;
   transition: all 0.15s;
 }
@@ -229,15 +261,15 @@ function getStatus(id) {
 .run-all-btn { background: #238636; color: #fff; border-color: #2ea043; }
 .run-all-btn:hover:not(:disabled) { background: #2ea043; }
 
-.reset-btn { background: transparent; color: var(--text-secondary, #8b949e); }
-.reset-btn:hover:not(:disabled) { color: var(--text-primary, #e6edf3); }
+.reset-btn { background: transparent; color: var(--text-secondary); }
+.reset-btn:hover:not(:disabled) { color: var(--text-primary); }
 
 .test-filters {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 12px 24px;
-  border-bottom: 1px solid var(--border-color, #21262d);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .filter-chip {
@@ -245,20 +277,20 @@ function getStatus(id) {
   border-radius: 99px;
   font-size: 11px;
   font-weight: 500;
-  border: 1px solid var(--border-color, #30363d);
+  border: 1px solid var(--border-color);
   background: transparent;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
   white-space: nowrap;
 }
-.filter-chip:hover { border-color: var(--text-secondary, #8b949e); color: var(--text-primary, #e6edf3); }
+.filter-chip:hover { border-color: var(--text-secondary); color: var(--text-primary); }
 .filter-chip.active { background: #388bfd26; border-color: #388bfd; color: #58a6ff; }
 
 .test-list { padding: 12px 24px; display: flex; flex-direction: column; gap: 4px; }
 
 .test-card {
-  border: 1px solid var(--border-color, #21262d);
+  border: 1px solid var(--border-color);
   border-radius: 8px;
   overflow: hidden;
   transition: border-color 0.15s;
@@ -274,12 +306,12 @@ function getStatus(id) {
   cursor: pointer;
   transition: background 0.1s;
 }
-.test-card-row:hover { background: var(--bg-secondary, #161b22); }
+.test-card-row:hover { background: var(--bg-hover); }
 
 .test-card-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .test-card-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
-.test-status-icon { flex-shrink: 0; color: var(--text-secondary, #484f58); }
+.test-status-icon { flex-shrink: 0; color: var(--text-muted); }
 .test-status-icon.pass { color: #3fb950; }
 .test-status-icon.fail { color: #f85149; }
 
@@ -295,17 +327,11 @@ function getStatus(id) {
   white-space: nowrap;
 }
 
-.test-label {
-  font-size: 13px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+.test-label { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 
 .test-id {
   font-size: 10px;
-  color: var(--text-muted, #484f58);
+  color: var(--text-muted);
   font-family: 'JetBrains Mono', monospace;
   flex-shrink: 0;
 }
@@ -328,20 +354,20 @@ function getStatus(id) {
   border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
-  border: 1px solid var(--border-color, #30363d);
+  border: 1px solid var(--border-color);
   background: transparent;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.15s;
 }
 .test-run-btn:hover { background: #238636; color: #fff; border-color: #2ea043; }
 
-.expand-icon { color: var(--text-muted, #484f58); flex-shrink: 0; }
+.expand-icon { color: var(--text-muted); flex-shrink: 0; }
 
 .test-card-detail {
   padding: 12px 14px;
-  border-top: 1px solid var(--border-color, #21262d);
-  background: var(--bg-secondary, #0d1117);
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-input);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -354,12 +380,30 @@ function getStatus(id) {
 .detail-label {
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-secondary, #8b949e);
+  color: var(--text-secondary);
   display: flex;
   align-items: center;
   gap: 6px;
 }
 .error-label { color: #f85149; }
+
+.detail-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  padding: 0;
+  margin-left: 2px;
+  transition: color 0.15s, background 0.15s;
+}
+.detail-copy-btn:hover { color: var(--text-primary); background: var(--bg-hover); }
+.copy-icon-done { color: #3fb950; }
 
 .detail-tag {
   display: inline-block;
@@ -388,7 +432,7 @@ function getStatus(id) {
   overflow-y: auto;
 }
 
-.input-code { background: #161b22; color: #c9d1d9; border: 1px solid var(--border-color, #21262d); }
-.output-code { background: #0d2818; color: #3fb950; border: 1px solid #23863630; }
-.error-code { background: #2d1014; color: #f85149; border: 1px solid #f8514930; }
+.input-code { background: var(--bg-input); color: var(--text-primary); border: 1px solid var(--border-color); }
+.output-code { background: var(--diff-added-bg); color: var(--success-text, #3fb950); border: 1px solid var(--diff-added-border); }
+.error-code { background: var(--error-bg); color: var(--error-text, #f85149); border: 1px solid var(--diff-removed-border); }
 </style>
