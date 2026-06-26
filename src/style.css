@@ -708,9 +708,14 @@ html.popup-mode .editor-line {
 .minify-wrap .line-code,
 .minify-wrap .editor-textarea,
 .minify-wrap .edit-textarea,
-.minify-wrap .editor-highlight {
+.minify-wrap .editor-highlight,
+.minify-wrap .editor-line {
   white-space: pre-wrap !important;
   word-break: break-all !important;
+}
+
+.minify-wrap .editor-line {
+  min-width: 100% !important;
 }
 
 /* ── Premium JSON Syntax Colors (Light/Dark matching Tree View) ── */
