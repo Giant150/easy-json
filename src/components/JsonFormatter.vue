@@ -394,14 +394,23 @@ const getErrorLineAndColumn = (error, text) => {
 
   if (!line) return { line: null, column: null }
 
-  // ── 启发式修正：报错行是 key 但上一行缺逗号 ──
+  // ── 启发式修正：缺逗号导致报错偏移 ──
   const lines = text.split('\n')
-  const errLine = (lines[line - 1] || '').trim()
-  if (line > 1 && /^".*"\s*:/.test(errLine)) {
+  if (line > 1) {
+    const errLine = (lines[line - 1] || '').trim()
     const prev = (lines[line - 2] || '').trim()
-    // 上一行以 value 结尾但没有逗号 → 真正的错误在上一行
-    if (/[}\d\]"'\w]\s*$/.test(prev) && !/,\s*$/.test(prev)) {
-      line = line - 1
+    // 1) 报错行是 key (如 "key":)，但上一行以值结尾且缺逗号
+    const isKey = /^".*"\s*:/.test(errLine)
+    // 2) 或者在数组中，报错行是数组元素（如以 ", [, {, true, false, null, 数字或字母/引号开头），且上一行以值结尾且缺逗号
+    const isArrayElement = /^(?:["[{]|\b(?:true|false|null)\b|\d)/.test(errLine)
+    
+    if (isKey || isArrayElement) {
+      const prevEndsWithVal = /[}\d\]"'\w]\s*$/.test(prev)
+      const prevHasComma = /,\s*$/.test(prev)
+      const prevEndsWithBracket = /[\[{]\s*$/.test(prev)
+      if (prevEndsWithVal && !prevHasComma && !prevEndsWithBracket) {
+        line = line - 1
+      }
     }
   }
 
@@ -588,8 +597,19 @@ const formatJSON = () => {
           const result = extractJsonFromText(tab.inputText)
           if (result) {
             let obj = JSON.parse(result.json)
-            tab.validationError = null
-            tab.errorLine = null
+            // 判断输入是否看起来像 JSON（以 {/[ 开头、}/] 结尾）
+            const looksLikeJson = /^\s*[{\[]/.test(tab.inputText) && /[}\]]\s*$/.test(tab.inputText)
+            // 看起来像 JSON 但解析失败 → 始终保留原始错误行
+            if (looksLikeJson) {
+              const { line } = getErrorLineAndColumn(err, tab.inputText)
+              tab.errorLine = line
+              tab.validationError = result.format === 'JSON (自动修复)'
+                ? 'JSON 已自动修复，建议检查原始输入'
+                : `JSON 解析失败，已提取内层有效 JSON（第 ${line || '?'} 行附近有误）`
+            } else {
+              tab.validationError = null
+              tab.errorLine = null
+            }
             tab.extractedFormat = result.format !== 'JSON' ? result.format : null
             tab.parsedObj = obj
 
@@ -623,6 +643,7 @@ const formatJSON = () => {
   // 自动格式化：将格式化结果回填到输入面板
   // 但如果用户正在编辑（textarea 聚焦时），不替换，避免光标跳到末尾
   if (autoFormat.value && tab.outputText && tab.inputText !== tab.outputText
+    && !tab.validationError
     && document.activeElement !== textareaRef.value) {
     formatGuard = true
     tab.inputText = tab.outputText
@@ -1207,22 +1228,40 @@ const lightweightHighlight = (text) => {
   )
 }
 
+const wrapLinesWithHighlight = (html, errorLine, dupLines) => {
+  if (!html) return ''
+  const lines = html.replace(/\r/g, '').split('\n')
+  const setDups = new Set(dupLines || [])
+  const mapped = lines.map((line, index) => {
+    const lineNum = index + 1
+    const isError = errorLine === lineNum
+    const isDup = setDups.has(lineNum)
+    const cls = isError ? 'editor-line has-error' : isDup ? 'editor-line has-duplicate' : 'editor-line'
+    return `<div class="${cls}">${line || ' '}</div>`
+  })
+  return mapped.join('')
+}
+
 const highlightedInput = computed(() => {
   const tab = activeTab.value
-  if (isHeavyInput.value) return lightweightHighlight(tab.inputText)
-  const counter = searchQuery.value
-    ? { count: 0, target: currentMatchIndex.value }
-    : null
-  const html = applyJsonHighlightWithPath(tab.inputText, counter)
-  if (counter) {
-    totalMatches.value = counter.count
-    if (currentMatchIndex.value >= counter.count && counter.count > 0) {
-      currentMatchIndex.value = 0
-    }
+  let html = ''
+  if (isHeavyInput.value) {
+    html = lightweightHighlight(tab.inputText)
   } else {
-    totalMatches.value = 0
+    const counter = searchQuery.value
+      ? { count: 0, target: currentMatchIndex.value }
+      : null
+    html = applyJsonHighlightWithPath(tab.inputText, counter)
+    if (counter) {
+      totalMatches.value = counter.count
+      if (currentMatchIndex.value >= counter.count && counter.count > 0) {
+        currentMatchIndex.value = 0
+      }
+    } else {
+      totalMatches.value = 0
+    }
   }
-  return html
+  return wrapLinesWithHighlight(html, tab.errorLine, tab.duplicateLines)
 })
 
 // Output highlight (right pane) — uses same currentMatchIndex for highlighting

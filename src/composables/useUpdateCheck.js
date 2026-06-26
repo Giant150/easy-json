@@ -1,6 +1,7 @@
 import { ref, onMounted } from 'vue'
+import pkg from '../../package.json'
 
-const APP_VERSION = '1.0.0'
+const APP_VERSION = pkg.version
 
 const GITHUB_API = 'https://api.github.com/repos/chengxy-nds/easy-json/releases/latest'
 const FALLBACK_URL = 'https://github.com/repos/chengxy-nds/easy-json/releases/latest'

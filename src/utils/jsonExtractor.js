@@ -1447,6 +1447,14 @@ export const extractJsonFromText = (text) => {
   const repaired = tryRepairJson(trimmed)
   if (repaired) return { json: repaired, format: 'JSON (自动修复)' }
 
+  // 如果输入看起来已经是完整的 JSON 结构（以 {/[ 开头，}/] 结尾），
+  // 但前面所有整体解析和修复都失败了，说明这确实是一个包含语法错误的 JSON。
+  // 此时不应提取其内部的局部子对象，否则会导致用户输入被截断/篡改。
+  const looksLikeJson = /^\s*[{\[]/.test(trimmed) && /[}\]]\s*$/.test(trimmed)
+  if (looksLikeJson) {
+    throw new Error('JSON 解析失败。')
+  }
+
   // ── 扫描所有 {...}、[...] 和 (...) ──
   const all = [
     ...scanBraces(text, '{', '}'),

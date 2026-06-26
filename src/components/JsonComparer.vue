@@ -74,7 +74,9 @@ const tabs = ref([
     leftText: DEMO_LEFT, 
     rightText: DEMO_RIGHT, 
     leftError: null,
-    rightError: null
+    leftErrorLine: null,
+    rightError: null,
+    rightErrorLine: null
   }
 ])
 const activeTabId = ref(1)
@@ -94,7 +96,9 @@ const addTab = () => {
     leftText: '',
     rightText: '',
     leftError: null,
-    rightError: null
+    leftErrorLine: null,
+    rightError: null,
+    rightErrorLine: null
   })
   activeTabId.value = newId
   scrollTabsToEnd()
@@ -188,11 +192,59 @@ const closeAllTabs = () => {
     leftText: DEMO_LEFT,
     rightText: DEMO_RIGHT,
     leftError: null,
-    rightError: null
+    leftErrorLine: null,
+    rightError: null,
+    rightErrorLine: null
   }]
   activeTabId.value = tabs.value[0].id
   saveComparerState()
   nextTick(checkTabsOverflow)
+}
+
+// 从 JSON.parse 错误中提取行列号并修正
+const getErrorLineAndColumn = (error, text) => {
+  const msg = error.message
+
+  // Firefox 格式: "line X column Y"
+  const lc = msg.match(/line\s+(\d+)\s+column\s+(\d+)/i)
+  let line = null, col = null
+  if (lc) {
+    line = parseInt(lc[1])
+    col  = parseInt(lc[2])
+  }
+
+  // Chrome/V8 格式: "position X"
+  const pm = msg.match(/position\s+(\d+)/i)
+  if (!line && pm) {
+    const pos = parseInt(pm[1])
+    line = 1; col = 1
+    for (let i = 0; i < pos && i < text.length; i++) {
+      if (text[i] === '\n') { line++; col = 1 }
+      else { col++ }
+    }
+  }
+
+  if (!line) return { line: null, column: null }
+
+  // 启发式修正：缺逗号导致报错偏移
+  const lines = text.split('\n')
+  if (line > 1) {
+    const errLine = (lines[line - 1] || '').trim()
+    const prev = (lines[line - 2] || '').trim()
+    const isKey = /^".*"\s*:/.test(errLine)
+    const isArrayElement = /^(?:["[{]|\b(?:true|false|null)\b|\d)/.test(errLine)
+    
+    if (isKey || isArrayElement) {
+      const prevEndsWithVal = /[}\d\]"'\w]\s*$/.test(prev)
+      const prevHasComma = /,\s*$/.test(prev)
+      const prevEndsWithBracket = /[\[{]\s*$/.test(prev)
+      if (prevEndsWithVal && !prevHasComma && !prevEndsWithBracket) {
+        line = line - 1
+      }
+    }
+  }
+
+  return { line, column: col }
 }
 
 // JSON Validation Watchers to avoid side-effects in computed
@@ -200,17 +252,33 @@ const validateJson = (text, isLeft) => {
   const tab = activeTab.value
   if (!tab) return
   if (!text || !text.trim()) {
-    if (isLeft) tab.leftError = null
-    else tab.rightError = null
+    if (isLeft) {
+      tab.leftError = null
+      tab.leftErrorLine = null
+    } else {
+      tab.rightError = null
+      tab.rightErrorLine = null
+    }
     return
   }
   try {
     JSON.parse(text)
-    if (isLeft) tab.leftError = null
-    else tab.rightError = null
+    if (isLeft) {
+      tab.leftError = null
+      tab.leftErrorLine = null
+    } else {
+      tab.rightError = null
+      tab.rightErrorLine = null
+    }
   } catch (err) {
-    if (isLeft) tab.leftError = `无效的 JSON: ${err.message}`
-    else tab.rightError = `无效的 JSON: ${err.message}`
+    const { line } = getErrorLineAndColumn(err, text)
+    if (isLeft) {
+      tab.leftError = `无效的 JSON: ${err.message}`
+      tab.leftErrorLine = line
+    } else {
+      tab.rightError = `无效的 JSON: ${err.message}`
+      tab.rightErrorLine = line
+    }
   }
 }
 
@@ -350,18 +418,24 @@ const formatInputs = () => {
     try {
       tab.leftText = JSON.stringify(JSON.parse(tab.leftText), null, 2)
       tab.leftError = null
+      tab.leftErrorLine = null
       success = true
     } catch (err) {
+      const { line } = getErrorLineAndColumn(err, tab.leftText)
       tab.leftError = `格式化左侧失败: ${err.message}`
+      tab.leftErrorLine = line
     }
   }
   if (tab.rightText && tab.rightText.trim()) {
     try {
       tab.rightText = JSON.stringify(JSON.parse(tab.rightText), null, 2)
       tab.rightError = null
+      tab.rightErrorLine = null
       success = true
     } catch (err) {
+      const { line } = getErrorLineAndColumn(err, tab.rightText)
       tab.rightError = `格式化右侧失败: ${err.message}`
+      tab.rightErrorLine = line
     }
   }
   if (success && showToast) {
@@ -378,18 +452,24 @@ const minifyInputs = () => {
     try {
       tab.leftText = JSON.stringify(JSON.parse(tab.leftText))
       tab.leftError = null
+      tab.leftErrorLine = null
       success = true
     } catch (err) {
+      const { line } = getErrorLineAndColumn(err, tab.leftText)
       tab.leftError = `压缩左侧失败: ${err.message}`
+      tab.leftErrorLine = line
     }
   }
   if (tab.rightText && tab.rightText.trim()) {
     try {
       tab.rightText = JSON.stringify(JSON.parse(tab.rightText))
       tab.rightError = null
+      tab.rightErrorLine = null
       success = true
     } catch (err) {
+      const { line } = getErrorLineAndColumn(err, tab.rightText)
       tab.rightError = `压缩右侧失败: ${err.message}`
+      tab.rightErrorLine = line
     }
   }
   if (success && showToast) {
@@ -475,14 +555,28 @@ const applyJsonHighlight = (text) => {
   })
 }
 
+const wrapLinesWithHighlight = (html, errorLine) => {
+  if (!html) return ''
+  const lines = html.replace(/\r/g, '').split('\n')
+  const mapped = lines.map((line, index) => {
+    const lineNum = index + 1
+    const isError = errorLine === lineNum
+    const cls = isError ? 'editor-line has-error' : 'editor-line'
+    return `<div class="${cls}">${line || ' '}</div>`
+  })
+  return mapped.join('')
+}
+
 const highlightedLeft = computed(() => {
   const tab = activeTab.value
-  return applyJsonHighlight(tab?.leftText || '')
+  const html = applyJsonHighlight(tab?.leftText || '')
+  return wrapLinesWithHighlight(html, tab?.leftErrorLine)
 })
 
 const highlightedRight = computed(() => {
   const tab = activeTab.value
-  return applyJsonHighlight(tab?.rightText || '')
+  const html = applyJsonHighlight(tab?.rightText || '')
+  return wrapLinesWithHighlight(html, tab?.rightErrorLine)
 })
 
 const isLeftMinified = computed(() => {
@@ -601,8 +695,10 @@ const stopEditingLeft = () => {
       const parsed = JSON.parse(tab.leftText)
       tab.leftText = JSON.stringify(parsed, null, 2)
       tab.leftError = null
+      tab.leftErrorLine = null
     } catch (err) {
-      // keep raw
+      // keep raw, but re-validate to ensure correct error line highlight
+      validateJson(tab.leftText, true)
     }
   }
   
@@ -628,8 +724,10 @@ const stopEditingRight = () => {
       const parsed = JSON.parse(tab.rightText)
       tab.rightText = JSON.stringify(parsed, null, 2)
       tab.rightError = null
+      tab.rightErrorLine = null
     } catch (err) {
-      // keep raw
+      // keep raw, but re-validate to ensure correct error line highlight
+      validateJson(tab.rightText, false)
     }
   }
   
@@ -953,7 +1051,7 @@ onMounted(() => {
             <!-- Edit Mode -->
             <div v-if="leftEditing" class="edit-pane-container">
               <div class="edit-gutter" ref="leftGutterRef">
-                <div v-for="n in leftLinesCount" :key="n" class="edit-line-number">{{ n }}</div>
+                <div v-for="n in leftLinesCount" :key="n" class="edit-line-number" :class="{ 'has-error': activeTab.leftErrorLine === n }">{{ n }}</div>
               </div>
               <div class="textarea-overlay-container" :class="{ 'minify-wrap': isLeftMinified }">
                 <pre
@@ -1070,7 +1168,7 @@ onMounted(() => {
             <!-- Edit Mode -->
             <div v-if="rightEditing" class="edit-pane-container">
               <div class="edit-gutter" ref="rightGutterRef">
-                <div v-for="n in rightLinesCount" :key="n" class="edit-line-number">{{ n }}</div>
+                <div v-for="n in rightLinesCount" :key="n" class="edit-line-number" :class="{ 'has-error': activeTab.rightErrorLine === n }">{{ n }}</div>
               </div>
               <div class="textarea-overlay-container" :class="{ 'minify-wrap': isRightMinified }">
                 <pre
@@ -1590,6 +1688,12 @@ onMounted(() => {
   padding-right: 6px;
   color: var(--text-muted);
   height: 20.15px;
+}
+
+.edit-line-number.has-error {
+  color: var(--error-text);
+  background-color: var(--error-bg);
+  font-weight: bold;
 }
 
 .edit-textarea {

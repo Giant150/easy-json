@@ -338,7 +338,7 @@ onMounted(() => {
         </button>
        <!-- <button class="sidebar-btn" @click="goToTest" data-tooltip-right="提取测试">
           <FlaskConical class="sidebar-btn-icon" />
-        </button> -->
+        </button>  -->
       </div>
     </aside>
 
