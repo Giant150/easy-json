@@ -8,6 +8,10 @@ use tauri::{
 
 #[tauri::command]
 fn is_installed() -> bool {
+    // 仅 macOS 需要检查是否从 DMG 直接运行（未拖入 Applications）
+    if !cfg!(target_os = "macos") {
+        return true
+    }
     if let Ok(exe_path) = env::current_exe() {
         let path_str = exe_path.to_string_lossy();
         // 检查是否在 /Applications 或 ~/Applications 下

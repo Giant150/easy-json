@@ -733,33 +733,37 @@ watch(
   }
 )
 
+// 对指定 tab 的输入文本执行智能提取（提取成功后替换原始输入）
+// 被 handlePaste 和 checkExtractOnLoad 共用
+const applyAutoExtract = (tab = activeTab.value) => {
+  if (!autoExtract.value) return
+  const text = textareaRef.value?.value || tab?.inputText
+  if (!text?.trim()) return
+  // 如果已经是有效 JSON 则跳过提取
+  try { JSON.parse(text); return } catch (e) {}
+  try {
+    const result = extractJsonFromText(text)
+    if (result && result.json !== text) {
+      tab.inputText = result.json
+      tab.validationError = null
+      tab.errorLine = null
+      showToast(result.format !== 'JSON' ? `已从 ${result.format} 提取 JSON` : '已自动提取 JSON')
+      if (autoFormat.value) {
+        try {
+          const obj = JSON.parse(result.json)
+          const space = indentSize.value === 'tab' ? '\t' : parseInt(indentSize.value || '2')
+          tab.inputText = JSON.stringify(obj, null, space)
+        } catch (e2) {}
+      }
+    }
+  } catch (e2) {}
+}
+
 // 粘贴时立即尝试智能提取（需开启自动提取）
 const handlePaste = () => {
   if (!autoExtract.value) return
   // setTimeout 确保 v-model 已更新（比 nextTick 更可靠）
-  setTimeout(() => {
-    const tab = activeTab.value
-    const text = textareaRef.value?.value || tab.inputText
-    if (!text.trim()) return
-    // 如果已经是有效 JSON 则跳过提取
-    try { JSON.parse(text); return } catch (e) {}
-    try {
-      const result = extractJsonFromText(text)
-      if (result && result.json !== text) {
-        tab.inputText = result.json
-        tab.validationError = null
-        tab.errorLine = null
-        showToast(result.format !== 'JSON' ? `已从 ${result.format} 提取 JSON` : '已自动提取 JSON')
-        if (autoFormat.value) {
-          try {
-            const obj = JSON.parse(result.json)
-            const space = indentSize.value === 'tab' ? '\t' : parseInt(indentSize.value || '2')
-            tab.inputText = JSON.stringify(obj, null, space)
-          } catch (e2) {}
-        }
-      }
-    } catch (e2) {}
-  }, 50)
+  setTimeout(() => applyAutoExtract(), 50)
 }
 
 // 自动格式化：输入后延迟 500ms 自动格式化输入内容（非粘贴时）
@@ -1379,14 +1383,20 @@ const highlightConverted = (code, format) => {
   if (/^(java|kotlin|csharp|go|swift|dart|rust|php|typescript|python)$/.test(format)) {
     const keywords = 'public|class|struct|interface|type|func|def|fun|data|val|var|let|const|export|extends|implements|override|return|if|else|for|while|import|from|package|new|this|super|static|final|abstract|async|await|throw|throws|try|catch|void|int|long|double|float|bool|boolean|String|string|char|byte|short|List|Map|Set|Array|Optional|Any|where|enum|extension|protocol|required|factory|trait|match|impl|pub|mut|fn|use|mod|self|sizeof|init|deinit|guard'
     const kwRe = new RegExp(`\\b(${keywords})\\b`, 'g')
-    return escaped
+    const numRe = /\b(\d+\.?\d*)\b/g
+    let html = escaped
       .replace(/(\/\/[^\n]*)/g, '<span class="hl-comment">$1</span>')
       .replace(/(\/\*[\s\S]*?\*\/)/g, '<span class="hl-comment">$1</span>')
+      .replace(/(@\w+)/g, '<span class="hl-attr">$1</span>')
+    // 关键词与数字高亮只作用于纯文本，跳过已存在的 HTML 标签，防止污染 class 属性
+    html = html.split(/(<[^>]+>)/g).map(part => {
+      if (part.startsWith('<')) return part
+      return part.replace(kwRe, '<span class="hl-kw">$1</span>')
+                 .replace(numRe, '<span class="hl-num">$1</span>')
+    }).join('')
+    return html
       .replace(/(&quot;[^&]*&quot;)/g, '<span class="hl-string">$1</span>')
       .replace(/(`[^`]*`)/g, '<span class="hl-string">$1</span>')
-      .replace(kwRe, '<span class="hl-kw">$1</span>')
-      .replace(/\b(\d+\.?\d*)\b/g, '<span class="hl-num">$1</span>')
-      .replace(/(@\w+)/g, '<span class="hl-attr">$1</span>')
   }
   // YAML 高亮
   if (format === 'yaml') {
@@ -1409,20 +1419,32 @@ const highlightConverted = (code, format) => {
   }
   // SQL 高亮
   if (format === 'mysql') {
-    return escaped
+    const sqlKwRe = /\b(CREATE|TABLE|ENGINE|InnoDB|DEFAULT|CHARSET|NOT|NULL|PRIMARY|KEY|INDEX|AUTO_INCREMENT|VARCHAR|TEXT|INT|BIGINT|BOOLEAN|DOUBLE|JSON|DATETIME)\b/g
+    const sqlNumRe = /\b(\d+)\b/g
+    let html = escaped
       .replace(/(--[^\n]*)/g, '<span class="hl-comment">$1</span>')
-      .replace(/\b(CREATE|TABLE|ENGINE|InnoDB|DEFAULT|CHARSET|NOT|NULL|PRIMARY|KEY|INDEX|AUTO_INCREMENT|VARCHAR|TEXT|INT|BIGINT|BOOLEAN|DOUBLE|JSON|DATETIME)\b/g, '<span class="hl-kw">$1</span>')
-      .replace(/(`[^`]*`)/g, '<span class="hl-string">$1</span>')
-      .replace(/\b(\d+)\b/g, '<span class="hl-num">$1</span>')
+    html = html.split(/(<[^>]+>)/g).map(part => {
+      if (part.startsWith('<')) return part
+      return part.replace(sqlKwRe, '<span class="hl-kw">$1</span>')
+                 .replace(sqlNumRe, '<span class="hl-num">$1</span>')
+    }).join('')
+    return html.replace(/(`[^`]*`)/g, '<span class="hl-string">$1</span>')
   }
   // Protobuf 高亮
   if (format === 'protobuf') {
-    return escaped
+    let html = escaped
       .replace(/(\/\/[^\n]*)/g, '<span class="hl-comment">$1</span>')
-      .replace(/\b(syntax|message|repeated|optional|required|enum|oneof|map|reserved|package|import|option|rpc|returns|stream)\b/g, '<span class="hl-kw">$1</span>')
-      .replace(/(&quot;[^&]*&quot;)/g, '<span class="hl-string">$1</span>')
-      .replace(/\b(\d+)\b/g, '<span class="hl-num">$1</span>')
-      .replace(/\b(string|bool|int32|int64|uint32|uint64|float|double|bytes)\b/g, '<span class="hl-type">$1</span>')
+    // 关键词/类型/数字只作用于纯文本，跳过已有 HTML 标签
+    const protoKwRe = /\b(syntax|message|repeated|optional|required|enum|oneof|map|reserved|package|import|option|rpc|returns|stream)\b/g
+    const protoTypeRe = /\b(string|bool|int32|int64|uint32|uint64|float|double|bytes)\b/g
+    const protoNumRe = /\b(\d+)\b/g
+    html = html.split(/(<[^>]+>)/g).map(part => {
+      if (part.startsWith('<')) return part
+      return part.replace(protoKwRe, '<span class="hl-kw">$1</span>')
+                 .replace(protoTypeRe, '<span class="hl-type">$1</span>')
+                 .replace(protoNumRe, '<span class="hl-num">$1</span>')
+    }).join('')
+    return html.replace(/(&quot;[^&]*&quot;)/g, '<span class="hl-string">$1</span>')
   }
   // GraphQL 高亮
   if (format === 'graphql') {
@@ -1836,6 +1858,8 @@ const checkExtractOnLoad = () => {
         const tab = tabs.value.find(t => t.id === newId)
         if (tab) {
           tab.inputText = text
+          // 与粘贴行为一致：启用自动提取时，替换原始输入为提取后的 JSON
+          setTimeout(() => applyAutoExtract(tab), 50)
         }
       })
 

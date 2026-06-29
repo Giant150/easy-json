@@ -465,10 +465,8 @@ onBeforeUnmount(() => {
 
         <!-- Center: Nav links -->
         <div class="home-nav-links">
-          <a href="#demo" class="home-nav-link">智能提取</a>
-          <a href="#diff" class="home-nav-link">语义比对</a>
-          <a href="#multiview" class="home-nav-link">多维视图</a>
-          <a href="#formats" class="home-nav-link">支持格式</a>
+          <a href="http://xiaofucode.com" target="_blank" class="home-nav-link">面试专题</a>
+          <a href="#contact" class="home-nav-link">联系交流</a>
         </div>
 
         <!-- Right: CTA + GitHub -->
@@ -978,15 +976,44 @@ onBeforeUnmount(() => {
 
     <!-- ─── Footer ─── -->
     <footer class="home-footer">
+      <!-- 二维码区域 -->
+      <div id="contact" class="footer-qr-section">
+        <div class="footer-qr-item">
+          <div class="footer-qr-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#07C160" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.9c1.9-1.6 5-1.2 6.6.7.8.9 1.3 2 1.3 3.3 0 1.3-.4 2.5-1.3 3.3L8 21l.8-9h-.8z"/><path d="M20 8.5c-2.1-2.7-5.7-3.4-8.5-1.7L16 3v4h-4l3.7 2.7c-1.8.3-3.5 1.2-4.7 2.6"/></svg>
+            <span>微信公众号</span>
+          </div>
+          <img
+            src="http://fire-blog.oss-cn-beijing.aliyuncs.com//images/20240415141903.png"
+            alt="微信公众号：程序员小富"
+            class="footer-qr-img"
+            loading="lazy"
+          />
+          <p class="footer-qr-label">关注公众号：<strong>程序员小富</strong></p>
+        </div>
+        <div class="footer-qr-item">
+          <div class="footer-qr-badge">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#07C160" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 10.9c1.9-1.6 5-1.2 6.6.7.8.9 1.3 2 1.3 3.3 0 1.3-.4 2.5-1.3 3.3L8 21l.8-9h-.8z"/><path d="M20 8.5c-2.1-2.7-5.7-3.4-8.5-1.7L16 3v4h-4l3.7 2.7c-1.8.3-3.5 1.2-4.7 2.6"/></svg>
+            <span>个人微信</span>
+          </div>
+          <img
+            src="http://fire-blog.oss-cn-beijing.aliyuncs.com//images/20240415141919.png"
+            alt="个人微信：xiaofucode"
+            class="footer-qr-img"
+            loading="lazy"
+          />
+          <p class="footer-qr-label">技术交流群 / 微信号：<strong style="color:#ff0606">xiaofucode</strong></p>
+        </div>
+      </div>
       <div class="home-footer-inner">
         <div class="footer-brand">
-          <img 
-            src="/images/logo.png" 
-            width="20" 
-            height="20" 
-            alt="easyJSON" 
+          <img
+            src="/images/logo.png"
+            width="20"
+            height="20"
+            alt="easyJSON"
             class="footer-logo-btn"
-            @click="emit('go-to-test')" 
+            @click="emit('go-to-test')"
           />
           <span>© 2026 easyJSON</span>
         </div>
@@ -1406,9 +1433,21 @@ onBeforeUnmount(() => {
 .faq-answer{font-size:13px;line-height:1.6;color:var(--text-secondary);padding:0 22px 18px;margin:0}
 
 /* ═══ FOOTER ═══ */
-.home-footer{width:100%;border-top:1px solid rgba(0,0,0,0.05);padding:28px 0;display:flex;align-items:center;justify-content:center}
+.home-footer{width:100%;border-top:1px solid rgba(0,0,0,0.05);padding:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .dark-mode .home-footer{border-top-color:rgba(255,255,255,0.04)}
-.home-footer-inner{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:1160px;padding:0 24px}
+/* 二维码区域 */
+.footer-qr-section{display:flex;gap:48px;justify-content:center;padding:40px 24px 32px;width:100%;max-width:1160px}
+.footer-qr-item{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.footer-qr-badge{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--text-primary);background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);border:1px solid var(--glass-border);border-radius:20px;padding:5px 14px}
+.dark-mode .footer-qr-badge{background:var(--glass-bg-dark);border-color:var(--glass-border-dark)}
+.footer-qr-img{width:200px;height:200px;border-radius:12px;border:2px solid var(--glass-border);background:#fff;object-fit:contain;transition:transform 0.3s ease}
+.footer-qr-img:hover{transform:scale(1.05)}
+.dark-mode .footer-qr-img{border-color:var(--glass-border-dark)}
+.footer-qr-label{font-size:13px;color:var(--text-secondary);margin:0;line-height:1.5}
+.footer-qr-label strong{color:var(--text-primary)}
+/* 底部栏 */
+.home-footer-inner{display:flex;align-items:center;justify-content:space-between;width:100%;max-width:1160px;padding:20px 24px;border-top:1px solid rgba(0,0,0,0.05)}
+.dark-mode .home-footer-inner{border-top-color:rgba(255,255,255,0.04)}
 .footer-brand{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted)}
 .footer-logo-btn{opacity:0.5;filter:grayscale(1);cursor:pointer;transition:all 0.2s ease}
 .footer-logo-btn:hover{opacity:0.95;filter:grayscale(0)}

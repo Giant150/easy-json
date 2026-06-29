@@ -10,9 +10,12 @@ const FALLBACK_URL = 'https://github.com/repos/chengxy-nds/easy-json/releases/la
 const getPlatformAsset = (assets) => {
   if (!assets || assets.length === 0) return null
 
-  const isMac = navigator.platform.toUpperCase().includes('MAC')
-  const isWin = navigator.platform.toUpperCase().includes('WIN')
-  const isLinux = navigator.platform.toUpperCase().includes('LINUX')
+  // navigator.platform 在某些环境下可能为空，用 userAgent 兜底
+  const platform = (navigator.platform || '').toUpperCase()
+  const ua = (navigator.userAgent || '').toUpperCase()
+  const isMac = platform.includes('MAC') || ua.includes('MAC OS')
+  const isWin = platform.includes('WIN') || ua.includes('WINDOWS')
+  const isLinux = platform.includes('LINUX') && !ua.includes('ANDROID') && !ua.includes('CRIOS')
 
   let pattern
   if (isMac) {

@@ -29,13 +29,13 @@ class AntigravityParticle {
     this.floatAmpY = 5 + Math.random() * 8
     this.progress = 0
     if (type === 'shape') {
-      this.transitionSpeed = 0.02 + Math.random() * 0.01  // 放慢一倍的汇聚速度
+      this.transitionSpeed = 0.02 + Math.random() * 0.07  // 放慢一倍的汇聚速度
     } else if (type === 'satellite') {
-      this.transitionSpeed = 0.0015 + Math.random() * 0.0005  // 放慢一倍的磁吸速度
+      this.transitionSpeed = 0.0015 + Math.random() * 0.0015  // 放慢一倍的磁吸速度
     } else {
       this.transitionSpeed = 0
     }
-    this.size = type === 'shape' ? (Math.random() * 2 + 0.4) : (Math.random() * 1.5 + 0.25)
+    this.size = type === 'shape' ? (Math.random() * 1.3 + 0.4) : (Math.random() * 1.5 + 0.25)
 
     // 汇聚目标色：赛博霓虹
     const colorRand = Math.random()

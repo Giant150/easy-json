@@ -43,9 +43,10 @@ export const jsonToCsv = (jsonStr) => {
   const headers = [...new Set(rows.flatMap(r => Object.keys(r)))]
   const formatCsvVal = (v) => {
     if (v === null || v === undefined) return ''
+    if (isObject(v)) return JSON.stringify(v)
     if (isArray(v)) return v.map(formatCsvVal).join('; ')
     const s = String(v)
-    if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+    if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes(';')) {
       return '"' + s.replace(/"/g, '""') + '"'
     }
     return s
@@ -67,13 +68,12 @@ export const jsonToYaml = (jsonStr) => {
       return node.map(item => {
         if (isObject(item)) {
           const entries = Object.entries(item)
-          const first = entries[0]
-          const rest = entries.slice(1)
-          let out = `${pad}- ${first[0]}: ${formatScalar(first[1])}`
-          for (const [k, v] of rest) {
-            out += `\n${pad}  ${k}: ${formatScalar(v)}`
-          }
-          return out
+          return entries.map(([k, v], i) => {
+            if (isObject(v) || isArray(v)) {
+              return `${pad}${i === 0 ? '- ' : '  '}${k}:\n${toYaml(v, depth + 1)}`
+            }
+            return `${pad}${i === 0 ? '- ' : '  '}${k}: ${formatScalar(v)}`
+          }).join('\n')
         }
         return `${pad}- ${formatScalar(item)}`
       }).join('\n')
@@ -146,7 +146,7 @@ const tomlValue = (v) => {
   if (v === null) return 'null'
   if (typeof v === 'boolean') return v ? 'true' : 'false'
   if (typeof v === 'number') return String(v)
-  return '"' + String(v).replace(/"/g, '\\"') + '"'
+  return '"' + String(v).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"'
 }
 
 // ═══ 5. JSON → Java POJO ═══
@@ -256,15 +256,19 @@ export const jsonToMysql = (jsonStr, tableName = 'my_table') => {
   for (const row of rows) {
     if (!isObject(row)) continue
     for (const [k, v] of Object.entries(row)) {
+      if (v === null) {
+        if (columns[k]) columns[k].nullable = true
+        continue
+      }
       const inferred = mysqlType(v)
       if (!columns[k]) {
-        columns[k] = { type: inferred, nullable: v === null }
+        columns[k] = { type: inferred, nullable: false }
       } else {
-        // 合并类型：string 优先级最高，其次是 double，最后是 integer/boolean
+        // 合并类型：JSON > TEXT > DOUBLE > BIGINT > BOOLEAN
         const current = columns[k]
-        if (v === null) current.nullable = true
         const newType = mysqlType(v)
-        if (newType === 'TEXT' || current.type === 'TEXT') current.type = 'TEXT'
+        if (newType === 'JSON' || current.type === 'JSON') current.type = 'JSON'
+        else if (newType === 'TEXT' || current.type === 'TEXT') current.type = 'TEXT'
         else if (newType === 'DOUBLE' || current.type === 'DOUBLE') current.type = 'DOUBLE'
         else if (newType === 'BIGINT' || current.type === 'BIGINT') current.type = 'BIGINT'
         else if (newType === 'BOOLEAN' && current.type === 'BOOLEAN') current.type = 'BOOLEAN'
@@ -273,9 +277,13 @@ export const jsonToMysql = (jsonStr, tableName = 'my_table') => {
   }
 
   const lines = []
+  // 如果没有推断出任何列，添加一个兜底 id 列
+  const colEntries = Object.keys(columns).length > 0
+    ? Object.entries(columns)
+    : [['id', { type: 'BIGINT', nullable: false }]]
   lines.push(`CREATE TABLE \`${tableName}\` (`)
-  const cols = Object.entries(columns).map(([name, info], i) => {
-    const comma = i < Object.keys(columns).length - 1 ? ',' : ''
+  const cols = colEntries.map(([name, info], i) => {
+    const comma = i < colEntries.length - 1 ? ',' : ''
     const nullable = info.nullable ? ' DEFAULT NULL' : ' NOT NULL'
     return `  \`${name}\` ${info.type}${nullable}${comma}`
   })
@@ -295,7 +303,7 @@ const mysqlType = (v) => {
   const s = String(v)
   if (s.length > 255) return 'TEXT'
   if (s.length > 100) return 'VARCHAR(255)'
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return 'DATETIME'
+  if (/^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}:\d{2})?$/.test(s)) return 'DATETIME'
   return 'VARCHAR(100)'
 }
 
@@ -416,7 +424,7 @@ export const jsonToRust = (jsonStr, rootName = 'Root') => {
   }
 
   structs.push(generateStruct(rootName, obj))
-  return structs.reverse().join('\n\n')
+  return 'use serde::{Deserialize, Serialize};\n\n' + structs.reverse().join('\n\n')
 }
 
 // ═══ 11. JSON → Python dataclass ═══
@@ -440,7 +448,7 @@ export const jsonToPython = (jsonStr, rootName = 'Root') => {
   }
 
   const generateClass = (name, node) => {
-    const lines = ['from dataclasses import dataclass', 'from typing import Any, List, Optional', '', '@dataclass', `class ${name}:`]
+    const lines = ['@dataclass', `class ${name}:`]
     if (Object.keys(node).length === 0) { lines.push('    pass'); return lines.join('\n') }
     for (const [k, v] of Object.entries(node)) {
       lines.push(`    ${toSnakeCase(k)}: ${pyType(v, k)}`)
@@ -449,7 +457,8 @@ export const jsonToPython = (jsonStr, rootName = 'Root') => {
   }
 
   classes.push(generateClass(rootName, obj))
-  return classes.reverse().join('\n\n')
+  const imports = 'from dataclasses import dataclass\nfrom typing import Any, List, Optional\n\n'
+  return imports + classes.reverse().join('\n\n')
 }
 
 // ═══ 12. JSON → Kotlin data class ═══
@@ -459,7 +468,7 @@ export const jsonToKotlin = (jsonStr, rootName = 'Root') => {
   const generated = new Set()
 
   const ktType = (val, key) => {
-    if (val === null) return 'Any?'
+    if (val === null) return 'Any'
     if (typeof val === 'boolean') return 'Boolean'
     if (typeof val === 'number') return Number.isInteger(val) ? 'Int' : 'Double'
     if (typeof val === 'string') return 'String'
@@ -552,28 +561,45 @@ export const jsonToDart = (jsonStr, rootName = 'Root') => {
 
   const generateClass = (name, node) => {
     const lines = [`class ${name} {`]
-    for (const [k, v] of Object.entries(node)) {
+    const entries = Object.entries(node)
+    for (const [k, v] of entries) {
       lines.push(`  final ${dartType(v, k)} ${toCamelCase(k)};`)
     }
     lines.push('')
     lines.push(`  ${name}({`)
-    Object.keys(node).forEach((k, i, arr) => {
+    entries.forEach(([k], i, arr) => {
       const comma = i < arr.length - 1 ? ',' : ''
       lines.push(`    required this.${toCamelCase(k)}${comma}`)
     })
     lines.push('  });')
     lines.push('')
+    // fromJson — 嵌套对象递归调用 .fromJson()
     lines.push(`  factory ${name}.fromJson(Map<String, dynamic> json) => ${name}(`)
-    Object.keys(node).forEach((k, i, arr) => {
+    entries.forEach(([k, v], i, arr) => {
       const comma = i < arr.length - 1 ? ',' : ''
-      lines.push(`    ${toCamelCase(k)}: json['${k}']${comma}`)
+      const field = toCamelCase(k)
+      if (isObject(v)) {
+        lines.push(`    ${field}: ${dartType(v, k)}.fromJson(json['${k}'])${comma}`)
+      } else if (isArray(v) && v.length > 0 && isObject(v[0])) {
+        lines.push(`    ${field}: (json['${k}'] as List).map((e) => ${dartType(v[0], k)}.fromJson(e)).toList()${comma}`)
+      } else {
+        lines.push(`    ${field}: json['${k}']${comma}`)
+      }
     })
     lines.push('  );')
     lines.push('')
+    // toJson — 嵌套对象递归调用 .toJson()
     lines.push('  Map<String, dynamic> toJson() => {')
-    Object.keys(node).forEach((k, i, arr) => {
+    entries.forEach(([k, v], i, arr) => {
       const comma = i < arr.length - 1 ? ',' : ''
-      lines.push(`    '${k}': ${toCamelCase(k)}${comma}`)
+      const field = toCamelCase(k)
+      if (isObject(v)) {
+        lines.push(`    '${k}': ${field}.toJson()${comma}`)
+      } else if (isArray(v) && v.length > 0 && isObject(v[0])) {
+        lines.push(`    '${k}': ${field}.map((e) => e.toJson()).toList()${comma}`)
+      } else {
+        lines.push(`    '${k}': ${field}${comma}`)
+      }
     })
     lines.push('  };')
     lines.push('}')
@@ -591,7 +617,7 @@ export const jsonToSwift = (jsonStr, rootName = 'Root') => {
   const generated = new Set()
 
   const swiftType = (val, key) => {
-    if (val === null) return 'String?'
+    if (val === null) return 'String'
     if (typeof val === 'boolean') return 'Bool'
     if (typeof val === 'number') return Number.isInteger(val) ? 'Int' : 'Double'
     if (typeof val === 'string') return 'String'
@@ -615,7 +641,11 @@ export const jsonToSwift = (jsonStr, rootName = 'Root') => {
     if (codingKeys.some(k => toCamelCase(k) !== k)) {
       lines.push('    enum CodingKeys: String, CodingKey {')
       codingKeys.forEach(k => {
-        if (toCamelCase(k) !== k) lines.push(`        case ${toCamelCase(k)} = "${k}"`)
+        if (toCamelCase(k) !== k) {
+          lines.push(`        case ${toCamelCase(k)} = "${k}"`)
+        } else {
+          lines.push(`        case ${toCamelCase(k)}`)
+        }
       })
       lines.push('    }')
     }
@@ -669,7 +699,13 @@ export const jsonToProperties = (jsonStr) => {
     for (const [k, v] of Object.entries(node)) {
       const fullKey = prefix ? `${prefix}.${k}` : k
       if (isObject(v)) { flatten(v, fullKey) }
-      else if (isArray(v)) { lines.push(`${fullKey}=${v.join(',')}`) }
+      else if (isArray(v)) {
+        if (v.length > 0 && isObject(v[0])) {
+          v.forEach((item, i) => lines.push(`${fullKey}[${i}]=${JSON.stringify(item)}`))
+        } else {
+          lines.push(`${fullKey}=${v.join(',')}`)
+        }
+      }
       else if (v === null) { lines.push(`# ${fullKey}=`) }
       else { lines.push(`${fullKey}=${v}`) }
     }
@@ -685,8 +721,9 @@ export const jsonToMarkdownTable = (jsonStr) => {
   const headers = [...new Set(rows.flatMap(r => isObject(r) ? Object.keys(r) : ['value']))]
   const esc = (v) => {
     if (v === null || v === undefined) return ''
-    if (isArray(v)) return v.join(', ')
-    return String(v).replace(/\|/g, '\\|')
+    if (isObject(v)) return JSON.stringify(v)
+    if (isArray(v)) return v.map(esc).join(', ')
+    return String(v).replace(/\|/g, '\\|').replace(/\n/g, '\\n')
   }
   const headerLine = '| ' + headers.join(' | ') + ' |'
   const sepLine = '| ' + headers.map(() => '---').join(' | ') + ' |'
@@ -701,13 +738,19 @@ export const jsonToIni = (jsonStr) => {
   const obj = JSON.parse(jsonStr)
   const lines = []
   // 判断顶层是否全为标量（扁平化输出）还是有嵌套对象（分 section）
-  const hasNested = Object.values(obj).some(v => isObject(v))
+  const hasNested = Object.values(obj).some(v => isObject(v) || (isArray(v) && v.length > 0 && isObject(v[0])))
   if (hasNested) {
     for (const [section, val] of Object.entries(obj)) {
       lines.push(`[${section}]`)
       if (isObject(val)) {
         for (const [k, v] of Object.entries(val)) {
-          if (isArray(v)) lines.push(`${k}=${v.join(',')}`)
+          if (isArray(v)) {
+            if (v.length > 0 && isObject(v[0])) {
+              v.forEach((item, i) => lines.push(`${k}[${i}]=${JSON.stringify(item)}`))
+            } else {
+              lines.push(`${k}=${v.join(',')}`)
+            }
+          }
           else lines.push(`${k}=${v ?? ''}`)
         }
       } else {
@@ -718,7 +761,13 @@ export const jsonToIni = (jsonStr) => {
   } else {
     // 扁平对象：直接输出 key=value
     for (const [k, v] of Object.entries(obj)) {
-      if (isArray(v)) lines.push(`${k}=${v.join(',')}`)
+      if (isArray(v)) {
+        if (v.length > 0 && isObject(v[0])) {
+          v.forEach((item, i) => lines.push(`${k}[${i}]=${JSON.stringify(item)}`))
+        } else {
+          lines.push(`${k}=${v.join(',')}`)
+        }
+      }
       else lines.push(`${k}=${v ?? ''}`)
     }
   }
@@ -800,7 +849,7 @@ export const jsonToJsonSchema = (jsonStr) => {
     if (typeof value === 'string') {
       schema._value = value
     } else if (Array.isArray(value) && schema.items) {
-      // Don't annotate array items (values vary)
+      value.forEach(item => annotateValues(item, schema.items))
     } else if (value && typeof value === 'object' && schema.properties) {
       for (const [key, val] of Object.entries(value)) {
         if (schema.properties[key]) {
@@ -860,7 +909,13 @@ export const jsonToPhp = (jsonStr, rootName = 'Root') => {
     if (typeof val === 'boolean') return 'bool'
     if (typeof val === 'number') return Number.isInteger(val) ? 'int' : 'float'
     if (typeof val === 'string') return 'string'
-    if (isArray(val)) return 'array'
+    if (isArray(val)) {
+      if (val.length > 0 && isObject(val[0])) {
+        const innerName = toPascalCase(key)
+        if (!generated.has(innerName)) { generated.add(innerName); classes.push(generateClass(innerName, val[0])) }
+      }
+      return 'array'
+    }
     const name = toPascalCase(key)
     if (!generated.has(name)) { generated.add(name); classes.push(generateClass(name, val)) }
     return name
@@ -876,8 +931,17 @@ export const jsonToPhp = (jsonStr, rootName = 'Root') => {
     }
     lines.push('')
     lines.push(`    public function __construct(array $data = []) {`)
-    for (const [k] of Object.entries(node)) {
-      lines.push(`        $this->${toCamelCase(k)} = $data['${k}'] ?? null;`)
+    for (const [k, v] of Object.entries(node)) {
+      const field = toCamelCase(k)
+      if (isObject(v)) {
+        const ty = phpType(v, k)
+        lines.push(`        $this->${field} = isset($data['${k}']) ? new ${ty}($data['${k}']) : null;`)
+      } else if (isArray(v) && v.length > 0 && isObject(v[0])) {
+        const ty = phpType(v[0], k)
+        lines.push(`        $this->${field} = array_map(fn($item) =>  new ${ty}($item), $data['${k}'] ?? []);`)
+      } else {
+        lines.push(`        $this->${field} = $data['${k}'] ?? null;`)
+      }
     }
     lines.push('    }')
     lines.push('}')
@@ -890,23 +954,30 @@ export const jsonToPhp = (jsonStr, rootName = 'Root') => {
 
 // ─── 共享辅助 ───
 const toPascalCase = (str) => {
-  return str
+  let result = str
     .replace(/[_-]+(\w)/g, (_, c) => c.toUpperCase())
     .replace(/^[a-z]/, c => c.toUpperCase())
     .replace(/[^a-zA-Z0-9]/g, '')
+  // 防止空标识符或数字开头 → 加 _ 前缀
+  if (!result || /^\d/.test(result)) result = '_' + result
+  return result || 'Field'
 }
 
 const toCamelCase = (str) => {
   const pascal = toPascalCase(str)
+  if (!pascal || pascal === 'Field') return 'field'
   return pascal[0].toLowerCase() + pascal.slice(1)
 }
 
 const toSnakeCase = (str) => {
-  return str
+  let result = str
     .replace(/([A-Z])/g, '_$1')
     .replace(/[_-]+/g, '_')
     .replace(/^_/, '')
     .toLowerCase()
+  // 防止空标识符或数字开头
+  if (!result || /^\d/.test(result)) result = '_' + result
+  return result || 'field'
 }
 
 // ─── 获取对应文件扩展名 ───

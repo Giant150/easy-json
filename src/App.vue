@@ -429,19 +429,32 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 12px 24px;
-  min-width: 280px;
+  padding: 12px 20px;
+  max-width: 360px;
   border-radius: 6px;
   background-color: var(--bg-panel);
   backdrop-filter: blur(8px);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.02);
   z-index: 9999;
   font-family: var(--font-sans);
-  font-size: clamp(11px, 1vw, 13px);
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
   pointer-events: none;
   transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease, z-index 0.35s ease;
+}
+/* 小屏适配 */
+@media (max-width: 480px) {
+  .global-toast {
+    bottom: 16px;
+    right: 12px;
+    left: 12px;
+    max-width: none;
+    padding: 10px 14px;
+    gap: 6px;
+    font-size: 12px;
+    border-radius: 8px;
+  }
 }
 
 .toast-icon {
