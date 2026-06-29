@@ -24,10 +24,12 @@ const trackDownload = (platform) => {
       eventName = 'download_windows'
     } else if (platform === 'Chrome插件') {
       eventName = 'download_plugin'
+    } else if (platform === 'uTools插件') {
+      eventName = 'download_utools'
     }
     window.LA.track(eventName)
   }
-  
+
   // 百度统计事件追踪
   if (window._hmt) {
     window._hmt.push(['_trackEvent', '下载', platform])
@@ -557,6 +559,21 @@ onBeforeUnmount(() => {
                   <p class="hero-dl-card-desc">NSIS 安装包，即装即用</p>
                   <span class="hero-dl-card-meta">Windows 10 / 11 · 64位</span>
                   <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.exe" class="hero-dl-card-btn" @click="trackDownload('Windows客户端')">下载 .exe</a>
+                </div>
+                <!-- uTools -->
+                <div class="hero-dl-card">
+                  <div class="hero-dl-card-icon">
+                    <svg viewBox="0 0 1024 1024" width="24" height="24">
+                      <path d="M512 64L160 288v448l352 224 352-224V288L512 64z" fill="#6366f1" opacity="0.15" />
+                      <path d="M512 128L224 320v384l288 192 288-192V320L512 128z" fill="none" stroke="#6366f1" stroke-width="32" />
+                      <circle cx="512" cy="512" r="120" fill="#6366f1" opacity="0.9" />
+                      <path d="M480 448l64 64-64 64" fill="none" stroke="#fff" stroke-width="28" stroke-linecap="round" stroke-linejoin="round" />
+                    </svg>
+                  </div>
+                  <h4 class="hero-dl-card-title">uTools 插件</h4>
+                  <p class="hero-dl-card-desc">快捷键呼出，即用即走</p>
+                  <span class="hero-dl-card-meta">macOS / Windows · uTools 平台</span>
+                  <a href="https://www.u-tools.cn/plugins/" target="_blank" class="hero-dl-card-btn" @click="trackDownload('uTools插件')">前往插件市场</a>
                 </div>
               </div>
             </div>
