@@ -11,7 +11,8 @@
     "tauri:build": "tauri build",
     "tauri:build:win": "tauri build --target x86_64-pc-windows-msvc",
     "build:mac:universal": "bash scripts/build-universal.sh",
-    "build:utools": "node scripts/build-utools.mjs"
+    "build:utools": "node scripts/build-utools.mjs",
+    "build:plugin": "vite build --outDir easyjson-plugin"
   },
   "dependencies": {
     "diff": "^9.0.0",
