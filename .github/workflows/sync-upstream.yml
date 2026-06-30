@@ -1,0 +1,28 @@
+name: Sync Fork with Upstream
+
+on:
+  schedule:
+    # 每天北京时间早上8点运行
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 允许你手动触发
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          # 需要包含完整的 git 历史以便合并
+          fetch-depth: 0
+
+      - name: Add upstream remote
+        run: git remote add upstream https://github.com/chengxy-nds/easy-json.git
+
+      - name: Fetch upstream changes
+        run: git fetch upstream
+
+      - name: Merge upstream changes
+        run: git checkout main && git merge upstream/main
+
+      - name: Push changes to fork
+        run: git push origin main
