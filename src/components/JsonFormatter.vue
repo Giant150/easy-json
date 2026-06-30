@@ -1988,9 +1988,9 @@ onBeforeUnmount(() => {
               </svg>
             </button>
 
-            <button 
-              class="action-btn danger icon-only" 
-              @click.stop="clearInput" 
+            <button
+              class="action-btn danger icon-only"
+              @click.stop="clearInput"
               :disabled="!activeTab.inputText"
               data-tooltip-bottom="清空输入"
               style="height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; padding: 0;"
@@ -2425,6 +2425,7 @@ onBeforeUnmount(() => {
 .action-btn:active:not(:disabled) {
   transform: scale(0.95);
 }
+
 
 .action-btn:disabled {
   pointer-events: none;

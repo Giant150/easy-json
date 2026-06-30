@@ -110,6 +110,14 @@
   --toolbar-item-bg: transparent;
 }
 
+/* 主题切换时禁用所有 transition，防止闪动 */
+.no-transition,
+.no-transition *,
+.no-transition *::before,
+.no-transition *::after {
+  transition: none !important;
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -568,9 +576,10 @@ html.popup-mode .app-layout {
 }
 
 .dark-mode .sidebar-btn.active {
-  background-color: rgba(255, 255, 255, 0.10);
-  color: var(--text-primary);
+  color: hsl(189, 92%, 58%);
+  background-color: #ffffff1a;
 }
+
 
 .sidebar-btn-icon {
   width: clamp(14px, 1.4vw, 17px);
