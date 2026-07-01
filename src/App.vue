@@ -139,9 +139,16 @@ const getToastStyle = (index) => {
 }
 
 const toggleTheme = () => {
+  // 切换瞬间禁用全局 transition，避免背景色/文字色闪动
+  document.documentElement.classList.add('no-transition')
   isDark.value = !isDark.value
   updateThemeClass()
   localStorage.setItem('ej_dark', isDark.value ? '1' : '0')
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      document.documentElement.classList.remove('no-transition')
+    })
+  })
 }
 
 const updateThemeClass = () => {
