@@ -1001,7 +1001,7 @@ onBeforeUnmount(() => {
             <span>微信公众号</span>
           </div>
           <img
-            src="http://fire-blog.oss-cn-beijing.aliyuncs.com//images/20240415141903.png"
+            src="/images/image.png"
             alt="微信公众号：程序员小富"
             class="footer-qr-img"
             loading="lazy"
@@ -1014,7 +1014,7 @@ onBeforeUnmount(() => {
             <span>个人微信</span>
           </div>
           <img
-            src="http://fire-blog.oss-cn-beijing.aliyuncs.com//images/20240415141919.png"
+            src="/images/image2.png"
             alt="个人微信：xiaofucode"
             class="footer-qr-img"
             loading="lazy"
