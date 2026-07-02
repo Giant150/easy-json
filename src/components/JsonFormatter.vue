@@ -38,6 +38,8 @@ const replaceExpanded = ref(false)
 const replaceInputRef = ref(null)
 const currentMatchIndex = ref(0)
 const totalMatches = ref(0)
+const textareaValue = ref('')
+const isTextareaFocused = ref(false)
 
 // 导入文本回调（由 ImportDropdown 触发）
 const handleImportText = (text) => {
@@ -736,6 +738,10 @@ watch(
   () => {
     formatJSON()
     saveFormatterState()
+    // Sync textareaValue when inputText changes from external sources (not from user editing)
+    if (isTextareaFocused.value && activeTab.value) {
+      textareaValue.value = activeTab.value.inputText
+    }
   }
 )
 
@@ -991,6 +997,9 @@ const copyToClipboard = () => {
 // Handle editor textarea focus (auto-paste support)
 const handleTextareaFocus = async () => {
   activeScrollTarget.value = 'left'
+  isTextareaFocused.value = true
+  textareaValue.value = activeTab.value?.inputText || ''
+
   if (!autoPaste.value) return
   const tab = activeTab.value
   // Only auto-paste into empty input
@@ -1034,6 +1043,18 @@ const handleTextareaFocus = async () => {
     }
   } catch (e) {
     // Clipboard read requires permission or https — silently ignore
+  }
+}
+
+const handleTextareaBlur = () => {
+  isTextareaFocused.value = false
+  textareaValue.value = ''
+}
+
+const handleTextareaInput = (e) => {
+  const tab = activeTab.value
+  if (tab) {
+    tab.inputText = e.target.value
   }
 }
 
@@ -2067,28 +2088,32 @@ onBeforeUnmount(() => {
         <div class="panel-body">
           <div class="editor-wrapper">
             <!-- Sync scroll line numbers -->
-            <div class="gutter" ref="gutterRef" v-html="inputGutterHtml"></div>
-            
+            <div class="gutter" ref="gutterRef" v-html="inputGutterHtml" aria-hidden="true"></div>
+
             <div class="textarea-overlay-container" :class="{ 'minify-wrap': isInputMinified }">
               <!-- Syntax highlight overlay (behind textarea) -->
               <div
                 ref="inputHighlightRef"
                 class="editor-highlight"
-                aria-hidden="true"
                 v-html="highlightedInput || '<span class=\'placeholder\'>在此粘贴或拖入你的 JSON 数据...</span>'"
               ></div>
               <!-- Transparent textarea on top -->
               <textarea
                 ref="textareaRef"
-                v-model="activeTab.inputText"
+                v-model="textareaValue"
                 class="editor-textarea"
                 placeholder=""
                 spellcheck="false"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                @input="handleTextareaInput"
                 @scroll="syncGutterScroll"
                 @paste="handlePaste"
                 @mouseenter="activeScrollTarget = 'left'"
                 @touchstart="activeScrollTarget = 'left'"
                 @focus="handleTextareaFocus"
+                @blur="handleTextareaBlur"
                 @mousemove="handleTextareaMouseMove"
                 @mouseleave="handleTextareaMouseLeave"
               ></textarea>
@@ -2201,7 +2226,7 @@ onBeforeUnmount(() => {
           <Transition name="fade-slide" mode="out-in">
             <!-- Text output -->
             <div v-if="activeTab.viewMode === 'text'" class="output-wrapper" key="text">
-              <div class="gutter" ref="outputGutterRef" v-html="outputGutterHtml"></div>
+              <div class="gutter" ref="outputGutterRef" v-html="outputGutterHtml" aria-hidden="true"></div>
               <pre 
                 class="output-pre" 
                 :class="{ 'minify-wrap': isOutputMinified }"
