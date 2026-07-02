@@ -10,6 +10,7 @@ import {
 import JsonTreeNode   from './JsonTreeNode.vue'
 import JsonGraphView  from './JsonGraphView.vue'
 import JsonTableView  from './JsonTableView.vue'
+import ImportDropdown from './ImportDropdown.vue'
 import { extractJsonFromText, convertJsObjectToJson, safeParseJsLike, tryParseCandidate } from '../utils/jsonExtractor.js';
 import { convertJson, formatLabels, getFormatExtension } from '../utils/jsonConverter.js';
 
@@ -37,6 +38,11 @@ const replaceExpanded = ref(false)
 const replaceInputRef = ref(null)
 const currentMatchIndex = ref(0)
 const totalMatches = ref(0)
+
+// 导入文本回调（由 ImportDropdown 触发）
+const handleImportText = (text) => {
+  if (activeTab.value) activeTab.value.inputText = text
+}
 // ─── 转换状态 ───
 const showConvertMenu = ref(false)
 const copyConvertedSuccess = ref(false)
@@ -1998,10 +2004,8 @@ onBeforeUnmount(() => {
               <Trash2 class="btn-icon" />
             </button>
 
-            <label class="action-btn outline icon-only" data-tooltip-bottom="导入本地文件">
-              <UploadCloud class="btn-icon" />
-              <input type="file" accept=".json" @change="triggerFileUpload" class="hidden-input" />
-            </label>
+            <!-- 导入按钮 + 下拉面板 -->
+            <ImportDropdown @import-text="handleImportText" />
 
             <button
               class="action-btn outline icon-only"

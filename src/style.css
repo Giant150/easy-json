@@ -1,5 +1,5 @@
 /* JetBrains Mono for code; Inter for UI */
-@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,100..900&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('/css/css2.css');
 
 :root {
   /* ── Light Mode (json4u-inspired: clean, solid, professional) ── */
