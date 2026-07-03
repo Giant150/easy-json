@@ -5,7 +5,8 @@ import {
   Copy, Download, UploadCloud, Check, Trash2,
   AlertTriangle, Braces, Eye, FileJson, ArrowRightLeft, Shuffle,
   ChevronDown, ChevronRight, ChevronUp, HelpCircle, Minimize2, Code, Search, Plus, X,
-  Network, Table2, Menu, FileCode, Maximize2, Strikethrough, ListTree
+  Network, Table2, Menu, FileCode, Maximize2, Strikethrough, ListTree,
+  Pencil, ArrowLeft, ArrowRight
 } from 'lucide-vue-next'
 import JsonTreeNode   from './JsonTreeNode.vue'
 import JsonGraphView  from './JsonGraphView.vue'
@@ -43,7 +44,13 @@ const isTextareaFocused = ref(false)
 
 // 导入文本回调（由 ImportDropdown 触发）
 const handleImportText = (text) => {
-  if (activeTab.value) activeTab.value.inputText = text
+  if (activeTab.value) {
+    activeTab.value.inputText = text
+    // 确保不创建新标签页
+    if (activeTabId.value !== activeTab.value.id) {
+      activeTabId.value = activeTab.value.id
+    }
+  }
 }
 // ─── 转换状态 ───
 const showConvertMenu = ref(false)
@@ -202,7 +209,7 @@ const tabs = ref([
     validationError: null,
     errorLine: null,
     duplicateLines: [],
-    viewMode: 'text',
+    viewMode: 'tree',
     convertFormat: null,
     extractedFormat: null
   }
@@ -239,7 +246,7 @@ const addTab = () => {
     validationError: null,
     errorLine: null,
     duplicateLines: [],
-    viewMode: 'text',
+    viewMode: 'tree',
     convertFormat: null,
     extractedFormat: null
   })
@@ -328,6 +335,15 @@ const closeRightTabs = () => {
   nextTick(checkTabsOverflow)
 }
 
+const closeOtherTabs = () => {
+  const targetId = tabContextMenu.value.tabId
+  if (tabs.value.length <= 1) return
+  tabs.value = tabs.value.filter(t => t.id === targetId)
+  activeTabId.value = targetId
+  saveFormatterState()
+  nextTick(checkTabsOverflow)
+}
+
 const closeAllTabs = () => {
   tabs.value = [{
     id: tabs.value[0].id,
@@ -338,7 +354,7 @@ const closeAllTabs = () => {
     validationError: null,
     errorLine: null,
     duplicateLines: [],
-    viewMode: 'text',
+    viewMode: 'tree',
     convertFormat: null,
     extractedFormat: null
   }]
@@ -493,17 +509,18 @@ const getErrorLineAndColumn = (error, text) => {
 }
 
 // Recursively sort object keys alphabetically
-const sortJSONKeys = (obj) => {
+const sortJSONKeys = (obj, desc = false) => {
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
   if (Array.isArray(obj)) {
-    return obj.map(sortJSONKeys);
+    return obj.map(item => sortJSONKeys(item, desc));
   }
   const sortedKeys = Object.keys(obj).sort();
+  if (desc) sortedKeys.reverse();
   const sortedObj = {};
   for (const key of sortedKeys) {
-    sortedObj[key] = sortJSONKeys(obj[key]);
+    sortedObj[key] = sortJSONKeys(obj[key], desc);
   }
   return sortedObj;
 }
@@ -635,8 +652,19 @@ const formatJSON = () => {
     tab.extractedFormat = null
     tab.parsedObj = obj
 
+    // 排序：开启前备份原始文本，关闭后恢复
     if (sortKeys.value) {
-      obj = sortJSONKeys(obj)
+      if (!tab._unsortedText) {
+        tab._unsortedText = tab.inputText
+      }
+      obj = sortJSONKeys(obj, sortKeys.value === 2)
+    } else {
+      if (tab._unsortedText) {
+        tab.inputText = tab._unsortedText
+        tab._unsortedText = null
+        obj = JSON.parse(tab.inputText)
+        tab.parsedObj = obj
+      }
     }
 
     if (indentSize.value === 'minify') {
@@ -655,8 +683,19 @@ const formatJSON = () => {
       let obj = escapedCheck.parsedObj
       tab.parsedObj = obj
 
+      // 排序：开启前备份原始文本，关闭后恢复
       if (sortKeys.value) {
-        obj = sortJSONKeys(obj)
+        if (!tab._unsortedText) {
+          tab._unsortedText = tab.inputText
+        }
+        obj = sortJSONKeys(obj, sortKeys.value === 2)
+      } else {
+        if (tab._unsortedText) {
+          tab.inputText = tab._unsortedText
+          tab._unsortedText = null
+          obj = JSON.parse(tab.inputText)
+          tab.parsedObj = obj
+        }
       }
 
       if (indentSize.value === 'minify') {
@@ -688,8 +727,19 @@ const formatJSON = () => {
             tab.extractedFormat = result.format !== 'JSON' ? result.format : null
             tab.parsedObj = obj
 
+            // 排序：开启前备份原始文本，关闭后恢复
             if (sortKeys.value) {
-              obj = sortJSONKeys(obj)
+              if (!tab._unsortedText) {
+                tab._unsortedText = tab.inputText
+              }
+              obj = sortJSONKeys(obj, sortKeys.value === 2)
+            } else {
+              if (tab._unsortedText) {
+                tab.inputText = tab._unsortedText
+                tab._unsortedText = null
+                obj = JSON.parse(tab.inputText)
+                tab.parsedObj = obj
+              }
             }
 
             if (indentSize.value === 'minify') {
@@ -891,7 +941,7 @@ const getFormattedJsonString = (rawText) => {
   try {
     let obj = JSON.parse(rawText)
     if (sortKeys.value) {
-      obj = sortJSONKeys(obj)
+      obj = sortJSONKeys(obj, sortKeys.value === 2)
     }
     const space = indentSize.value === 'tab' ? '\t' : parseInt(indentSize.value === 'minify' ? '2' : (indentSize.value || '2'))
     return JSON.stringify(obj, null, space)
@@ -976,6 +1026,10 @@ const onDrop = (e) => {
     reader.onload = (event) => {
       activeTab.value.inputText = getFormattedJsonString(event.target.result)
       showToast('文件导入成功')
+      // 确保不创建新标签页
+      if (activeTabId.value !== activeTab.value.id) {
+        activeTabId.value = activeTab.value.id
+      }
     }
     reader.readAsText(file)
   }
@@ -1055,6 +1109,10 @@ const handleTextareaInput = (e) => {
   const tab = activeTab.value
   if (tab) {
     tab.inputText = e.target.value
+    tab._unsortedText = null // 用户手动编辑后清除备份
+    if (activeTabId.value !== tab.id) {
+      activeTabId.value = tab.id
+    }
   }
 }
 
@@ -1581,9 +1639,16 @@ const handleFormatDirect = () => {
     indentSize.value = '2' // default format style
   }
   try {
+    // 排序：开启前备份原始文本，关闭后恢复
+    if (sortKeys.value) {
+      if (!tab._unsortedText) tab._unsortedText = tab.inputText
+    } else if (tab._unsortedText) {
+      tab.inputText = tab._unsortedText
+      tab._unsortedText = null
+    }
     let obj = JSON.parse(tab.inputText)
     if (sortKeys.value) {
-      obj = sortJSONKeys(obj)
+      obj = sortJSONKeys(obj, sortKeys.value === 2)
     }
     const space = indentSize.value === 'tab' ? '\t' : parseInt(indentSize.value || '2')
     tab.inputText = JSON.stringify(obj, null, space)
@@ -1792,9 +1857,16 @@ const handleExtract = () => {
   if (!tab.inputText.trim()) return
   try {
     const result = extractJsonFromText(tab.inputText)
-    let obj = JSON.parse(result.json)
+    // 排序：开启前备份原始文本，关闭后恢复
     if (sortKeys.value) {
-      obj = sortJSONKeys(obj)
+      if (!tab._unsortedText) tab._unsortedText = result.json
+    } else if (tab._unsortedText) {
+      tab.inputText = tab._unsortedText
+      tab._unsortedText = null
+    }
+    let obj = JSON.parse(sortKeys.value ? result.json : tab.inputText)
+    if (sortKeys.value) {
+      obj = sortJSONKeys(obj, sortKeys.value === 2)
     }
     if (indentSize.value === 'minify') {
       tab.inputText = JSON.stringify(obj)
@@ -1873,7 +1945,7 @@ const checkExtractOnLoad = () => {
         validationError: null,
         errorLine: null,
         duplicateLines: [],
-        viewMode: 'text',
+        viewMode: 'tree',
         convertFormat: null,
         extractedFormat: null
       }
@@ -1952,10 +2024,13 @@ onBeforeUnmount(() => {
         class="tab-context-menu"
         :style="{ left: tabContextMenu.x + 'px', top: tabContextMenu.y + 'px' }"
       >
-        <button @click="closeTab(tabContextMenu.tabId)" :disabled="tabs.length <= 1">关闭</button>
-        <button @click="closeLeftTabs" :disabled="tabs.findIndex(t => t.id === tabContextMenu.tabId) === 0">关闭左侧</button>
-        <button @click="closeRightTabs" :disabled="tabs.findIndex(t => t.id === tabContextMenu.tabId) === tabs.length - 1">关闭右侧</button>
-        <button @click="closeAllTabs" :disabled="tabs.length <= 1">关闭全部</button>
+        <button @click="closeTab(tabContextMenu.tabId)" :disabled="tabs.length <= 1"><X class="ctx-icon" />关闭</button>
+        <button @click="closeOtherTabs" :disabled="tabs.length <= 1"><X class="ctx-icon" />关闭其他</button>
+        <button @click="closeLeftTabs" :disabled="tabs.findIndex(t => t.id === tabContextMenu.tabId) === 0"><ArrowLeft class="ctx-icon" />关闭左侧</button>
+        <button @click="closeRightTabs" :disabled="tabs.findIndex(t => t.id === tabContextMenu.tabId) === tabs.length - 1"><ArrowRight class="ctx-icon" />关闭右侧</button>
+        <button @click="closeAllTabs" :disabled="tabs.length <= 1"><Trash2 class="ctx-icon" />关闭全部</button>
+        <div class="context-menu-divider"></div>
+        <button @click="startEditTab(tabContextMenu.tabId); tabContextMenu.visible = false"><Pencil class="ctx-icon" />重命名</button>
       </div>
     </Teleport>
 
@@ -1993,6 +2068,9 @@ onBeforeUnmount(() => {
               <Strikethrough class="toolbar-icon" />
               <span class="toolbar-label">去注释</span>
             </button>
+
+            <!-- 导入按钮 + 下拉面板 -->
+            <ImportDropdown @import-text="handleImportText" />
           </div>
           <div class="header-search-wrapper">
             <button
@@ -2024,9 +2102,6 @@ onBeforeUnmount(() => {
             >
               <Trash2 class="btn-icon" />
             </button>
-
-            <!-- 导入按钮 + 下拉面板 -->
-            <ImportDropdown @import-text="handleImportText" />
 
             <button
               class="action-btn outline icon-only"
@@ -2131,20 +2206,20 @@ onBeforeUnmount(() => {
               <div class="segmented-indicator" :class="'pos-' + activeTab.viewMode"></div>
               <button
                 class="segment-btn"
-                :class="{ active: activeTab.viewMode === 'text' }"
-                @click="activeTab.viewMode = 'text'"
-                data-tooltip-bottom="代码视图"
-              >
-                <Code class="seg-icon" />
-              </button>
-              <button
-                class="segment-btn"
                 :class="{ active: activeTab.viewMode === 'tree' }"
                 @click="activeTab.viewMode = 'tree'"
                 :disabled="!activeTab.parsedObj || !!convertFormat"
                 data-tooltip-bottom="树形视图"
               >
                 <ListTree class="seg-icon" />
+              </button>
+              <button
+                class="segment-btn"
+                :class="{ active: activeTab.viewMode === 'text' }"
+                @click="activeTab.viewMode = 'text'"
+                data-tooltip-bottom="代码视图"
+              >
+                <Code class="seg-icon" />
               </button>
               <button
                 class="segment-btn"
@@ -2225,10 +2300,15 @@ onBeforeUnmount(() => {
         <div class="panel-body">
           <Transition name="fade-slide" mode="out-in">
             <!-- Text output -->
-            <div v-if="activeTab.viewMode === 'text'" class="output-wrapper" key="text">
+            <!-- Tree view -->
+            <div v-if="activeTab.viewMode === 'tree' && activeTab.parsedObj" class="tree-wrapper" key="tree">
+              <JsonTreeNode :value="activeTab.parsedObj" :is-last="true" />
+            </div>
+
+            <div v-else-if="activeTab.viewMode === 'text'" class="output-wrapper" key="text">
               <div class="gutter" ref="outputGutterRef" v-html="outputGutterHtml" aria-hidden="true"></div>
-              <pre 
-                class="output-pre" 
+              <pre
+                class="output-pre"
                 :class="{ 'minify-wrap': isOutputMinified }"
                 ref="outputPreRef"
                 @scroll="handleOutputScroll"
@@ -2236,11 +2316,6 @@ onBeforeUnmount(() => {
                 @touchstart="activeScrollTarget = 'right'"
                 v-html="highlightedOutput || '<span class=\'placeholder\'>等待有效的 JSON 输入...</span>'"
               ></pre>
-            </div>
-            
-            <!-- Tree view -->
-            <div v-else-if="activeTab.viewMode === 'tree' && activeTab.parsedObj" class="tree-wrapper" key="tree">
-              <JsonTreeNode :value="activeTab.parsedObj" :is-last="true" />
             </div>
 
             <!-- Graph (topology) view -->
@@ -2733,10 +2808,10 @@ onBeforeUnmount(() => {
   z-index: 1;
 }
 
-.segmented-indicator.pos-text {
+.segmented-indicator.pos-tree {
   left: var(--seg-padding);
 }
-.segmented-indicator.pos-tree {
+.segmented-indicator.pos-text {
   left: calc(var(--seg-padding) + var(--seg-size) + 2px);
 }
 .segmented-indicator.pos-graph {

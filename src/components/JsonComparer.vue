@@ -2,7 +2,8 @@
 import { ref, computed, watch, onMounted, nextTick, inject } from 'vue'
 import {
   Split, ArrowRightLeft, RefreshCw, Copy, SlidersHorizontal,
-  FileJson, Check, AlertTriangle, Plus, Minus, FileCode, X, Trash2
+  FileJson, Check, AlertTriangle, Plus, Minus, FileCode, X, Trash2,
+  Pencil, ArrowLeft, ArrowRight
 } from 'lucide-vue-next'
 import * as diff from 'diff'
 import { useTabsDrag } from '../composables/useTabsDrag'
@@ -181,6 +182,15 @@ const closeRightTabs = () => {
   if (removed.some(t => t.id === activeTabId.value)) {
     activeTabId.value = tabs.value[tabs.value.length - 1].id
   }
+  saveComparerState()
+  nextTick(checkTabsOverflow)
+}
+
+const closeOtherTabs = () => {
+  const targetId = tabContextMenu.value.tabId
+  if (tabs.value.length <= 1) return
+  tabs.value = tabs.value.filter(t => t.id === targetId)
+  activeTabId.value = targetId
   saveComparerState()
   nextTick(checkTabsOverflow)
 }
@@ -409,7 +419,7 @@ const getFormattedText = (rawText) => {
   try {
     let parsed = JSON.parse(rawText)
     if (sortKeys.value) {
-      parsed = sortJSONKeys(parsed)
+      parsed = sortJSONKeys(parsed, sortKeys.value === 2)
     }
     return JSON.stringify(parsed, null, 2)
   } catch (err) {
@@ -418,17 +428,18 @@ const getFormattedText = (rawText) => {
 }
 
 // Recursively sort object keys alphabetically
-const sortJSONKeys = (obj) => {
+const sortJSONKeys = (obj, desc = false) => {
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
   if (Array.isArray(obj)) {
-    return obj.map(sortJSONKeys);
+    return obj.map(item => sortJSONKeys(item, desc));
   }
   const sortedKeys = Object.keys(obj).sort();
+  if (desc) sortedKeys.reverse();
   const sortedObj = {};
   for (const key of sortedKeys) {
-    sortedObj[key] = sortJSONKeys(obj[key]);
+    sortedObj[key] = sortJSONKeys(obj[key], desc);
   }
   return sortedObj;
 }
@@ -1099,10 +1110,13 @@ onMounted(() => {
         class="tab-context-menu"
         :style="{ left: tabContextMenu.x + 'px', top: tabContextMenu.y + 'px' }"
       >
-        <button @click="closeTab(tabContextMenu.tabId)" :disabled="tabs.length <= 1">关闭</button>
-        <button @click="closeLeftTabs" :disabled="tabs.findIndex(t => t.id === tabContextMenu.tabId) === 0">关闭左侧</button>
-        <button @click="closeRightTabs" :disabled="tabs.findIndex(t => t.id === tabContextMenu.tabId) === tabs.length - 1">关闭右侧</button>
-        <button @click="closeAllTabs" :disabled="tabs.length <= 1">关闭全部</button>
+        <button @click="closeTab(tabContextMenu.tabId)" :disabled="tabs.length <= 1"><X class="ctx-icon" />关闭</button>
+        <button @click="closeOtherTabs" :disabled="tabs.length <= 1"><X class="ctx-icon" />关闭其他</button>
+        <button @click="closeLeftTabs" :disabled="tabs.findIndex(t => t.id === tabContextMenu.tabId) === 0"><ArrowLeft class="ctx-icon" />关闭左侧</button>
+        <button @click="closeRightTabs" :disabled="tabs.findIndex(t => t.id === tabContextMenu.tabId) === tabs.length - 1"><ArrowRight class="ctx-icon" />关闭右侧</button>
+        <button @click="closeAllTabs" :disabled="tabs.length <= 1"><Trash2 class="ctx-icon" />关闭全部</button>
+        <div class="context-menu-divider"></div>
+        <button @click="startEditTab(tabContextMenu.tabId); tabContextMenu.visible = false"><Pencil class="ctx-icon" />重命名</button>
       </div>
     </Teleport>
 

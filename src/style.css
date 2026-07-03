@@ -1363,3 +1363,19 @@ mark.search-match-current {
   color: var(--text-muted);
   cursor: default;
 }
+
+.context-menu-divider {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border-color);
+}
+
+.ctx-icon {
+  width: 13px;
+  height: 13px;
+  margin-right: 6px;
+  flex-shrink: 0;
+  vertical-align: middle;
+  position: relative;
+  top: -0.5px;
+}

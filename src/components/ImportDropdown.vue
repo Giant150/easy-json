@@ -4,6 +4,7 @@ import { UploadCloud, Terminal, Globe, FileCode, RefreshCw } from 'lucide-vue-ne
 
 const emit = defineEmits(['import-text'])
 const showToast = inject('showToast')
+const autoPaste = inject('autoPaste', ref(false))
 
 const panelOpen = ref(false)
 const activeTab = ref('file') // 'file' | 'curl' | 'url' | 'base64'
@@ -11,6 +12,8 @@ const curlInput = ref('')
 const urlInput = ref('')
 const base64Input = ref('')
 const loading = ref(false)
+const showRawOutput = ref(false) // 是否显示原始输出
+const rawOutput = ref('') // 原始输出内容
 
 const switchTab = (tab) => {
   activeTab.value = tab
@@ -19,30 +22,266 @@ const switchTab = (tab) => {
   base64Input.value = ''
 }
 
-// ─── cURL 命令解析器（浏览器兼容） ───
-const parseCurl = (cmd) => {
-  // 清洗折行符：\  (Unix) / ^ (Windows)
-  const cleaned = cmd.replace(/\\\r?\n/g, ' ').replace(/\^\r?\n/g, ' ')
-  // 提取所有引号内字符串和裸 token
+// 自动粘贴：焦点进入空输入框时读取剪贴板
+const handleCurlAutoPaste = () => handleAutoPaste(curlInput)
+const handleUrlAutoPaste = () => handleAutoPaste(urlInput)
+const handleBase64AutoPaste = () => handleAutoPaste(base64Input)
+
+const handleAutoPaste = async (targetRef) => {
+  if (!autoPaste.value) return
+  // 只往空输入框粘贴
+  if (targetRef.value?.trim()) return
+
+  try {
+    let text = ''
+
+    // 1. uTools 环境
+    if (window.utools && typeof window.utools.readText === 'function') {
+      text = window.utools.readText()
+    }
+    // 2. Tauri 桌面环境
+    else if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+      const { invoke } = await import('@tauri-apps/api/core')
+      text = await invoke('read_clipboard')
+    }
+    // 3. 标准 Web 环境
+    else {
+      text = await navigator.clipboard.readText()
+    }
+
+    if (text && text.trim()) {
+      targetRef.value = text
+      showToast('已自动粘贴')
+    }
+  } catch (e) {
+    // 静默忽略，clipboard 权限问题不打扰用户
+  }
+}
+
+// ─── 多格式请求解析器（curl / fetch / PowerShell） ───
+
+// 提取单引号或双引号字符串内容
+const extractQuoted = (s) => {
+  if (!s) return ''
+  s = s.trim()
+  if ((s.startsWith("'") && s.endsWith("'")) || (s.startsWith('"') && s.endsWith('"'))) {
+    return s.slice(1, -1)
+  }
+  return s
+}
+
+// 从 JS 对象字面量中提取 headers
+const extractJsHeaders = (text) => {
+  const headers = {}
+  // 匹配 headers 块: headers: { ... } 或 headers: { ... }（嵌套括号处理）
+  const hdrMatch = text.match(/headers\s*:\s*\{/)
+  if (!hdrMatch) return headers
+  const start = hdrMatch.index + hdrMatch[0].length
+  let depth = 1, i = start, key = '', val = '', inKey = true, inStr = false, strChar = ''
+  while (i < text.length && depth > 0) {
+    const ch = text[i]
+    if (inStr) {
+      if (ch === '\\') { i += 2; continue }
+      if (ch === strChar) { inStr = false }
+      i++; continue
+    }
+    if (ch === "'" || ch === '"') { inStr = true; strChar = ch; i++; continue }
+    if (ch === '{') { depth++; i++; continue }
+    if (ch === '}') { depth--; i++; continue }
+    if (depth !== 1) { i++; continue }
+    if (ch === ':') { inKey = false; i++; continue }
+    if (ch === ',' || ch === '\n') {
+      if (key && val) {
+        headers[extractQuoted(key)] = extractQuoted(val.trim().replace(/,\s*$/, ''))
+      }
+      key = ''; val = ''; inKey = true; i++; continue
+    }
+    if (inKey) key += ch; else val += ch
+    i++
+  }
+  if (key && val) headers[extractQuoted(key)] = extractQuoted(val.trim().replace(/,\s*$/, ''))
+  return headers
+}
+
+// 检测输入格式
+const detectFormat = (cmd) => {
+  const trimmed = cmd.trim()
+  if (/^(curl|curl\.exe)\s/i.test(trimmed)) return 'curl'
+  if (/^fetch\s*\(/i.test(trimmed) || /^(const\s+|let\s+|var\s+)?(\w+\s*=\s*)?(await\s+)?fetch\s*\(/i.test(trimmed)) return 'fetch'
+  if (/^Invoke-(RestMethod|WebRequest)\s/i.test(trimmed)) return 'powershell'
+  // 默认按 curl 处理
+  return 'curl'
+}
+
+// ─── curl 解析器（bash / cmd / PowerShell curl.exe） ───
+const parseCurlFormat = (cmd) => {
+  // 清洗折行符：\ (Unix) / ^ (Windows cmd) / ` (PowerShell)
+  const cleaned = cmd.replace(/\\\r?\n/g, ' ').replace(/\^\r?\n/g, ' ').replace(/`\r?\n/g, ' ')
   const tokens = []
   const re = /'([^']*)'|"([^"]*)"|(\S+)/g
   let m
   while ((m = re.exec(cleaned)) !== null) {
     tokens.push(m[1] ?? m[2] ?? m[3])
   }
-  let url = '', method = 'GET'; const headers = {}; let body = ''
+
+  let url = '', method = 'GET'
+  const headers = {}
+  let body = ''
+  const cookies = []
+
   for (let i = 0; i < tokens.length; i++) {
-    const t = tokens[i]; const n = tokens[i + 1]
-    if (t === '-H' || t === '--header') { if (n) { const idx = n.indexOf(':'); if (idx > 0) headers[n.slice(0, idx).trim()] = n.slice(idx + 1).trim(); i++ } }
-    else if (t === '-X' || t === '--request') { if (n) { method = n.toUpperCase(); i++ } }
-    else if (t === '-d' || t === '--data' || t === '--data-raw' || t === '--data-binary' || t === '--data-ascii') { if (n) { body = n; if (method === 'GET') method = 'POST'; i++ } }
-    else if (t.startsWith('http://') || t.startsWith('https://')) { url = t }
-    else if (/^curl$/i.test(t) || t.startsWith('-') || t.startsWith('--')) { /* skip flag */ }
-    else if (!url && /^[a-zA-Z0-9][-a-zA-Z0-9+&@#/%?=~_|!:,.;]+/.test(t)) { url = t.startsWith('http') ? t : 'https://' + t }
+    const t = tokens[i]
+    const n = tokens[i + 1]
+
+    if (t === '-H' || t === '--header') {
+      if (n) {
+        const idx = n.indexOf(':')
+        if (idx > 0) {
+          headers[n.slice(0, idx).trim()] = n.slice(idx + 1).trim()
+        }
+        i++
+      }
+    } else if (t === '-X' || t === '--request') {
+      if (n) { method = n.toUpperCase(); i++ }
+    } else if (t === '-d' || t === '--data' || t === '--data-raw' || t === '--data-binary' || t === '--data-ascii' || t === '--data-urlencode') {
+      if (n) { body = n; if (method === 'GET') method = 'POST'; i++ }
+    } else if (t === '-b' || t === '--cookie' || t === '--cookies') {
+      if (n && n.includes('=') && !n.includes('/')) { cookies.push(n); i++ }
+      else if (n) i++
+    } else if (t.startsWith('http://') || t.startsWith('https://')) {
+      url = t
+    } else if (/^curl(\.exe)?$/i.test(t) || t.startsWith('-') || t.startsWith('--')) {
+      // skip
+    } else if (!url && /^[a-zA-Z0-9][-a-zA-Z0-9+&@#/%?=~_|!:,.;]+/.test(t)) {
+      url = 'https://' + t
+    }
   }
+
+  if (cookies.length > 0) {
+    const cs = cookies.join('; ')
+    headers['Cookie'] = headers['Cookie'] ? `${headers['Cookie']}; ${cs}` : cs
+  }
+
   if (!url) throw new Error('未找到有效 URL')
-  try { if (body) body = JSON.stringify(JSON.parse(body), null, 2) } catch {}
   return { url, method, headers, body }
+}
+
+// ─── JavaScript/Node.js fetch 解析器 ───
+const parseFetchFormat = (cmd) => {
+  // 提取 fetch(...) 第一个参数 URL
+  const urlMatch = cmd.match(/fetch\s*\(\s*(['"])(https?:\/\/[^'"]+)\1/)
+  if (!urlMatch) throw new Error('未找到有效的 fetch URL')
+  const url = urlMatch[2]
+
+  // 提取 method
+  let method = 'GET'
+  const methodMatch = cmd.match(/method\s*:\s*(['"])(\w+)\1/i)
+  if (methodMatch) method = methodMatch[2].toUpperCase()
+
+  // 提取 headers
+  const headers = extractJsHeaders(cmd)
+
+  // 提取 body
+  let body = ''
+  // 匹配 body: '...' 或 body: "..." 或 body: JSON.stringify(...)
+  const bodyMatch = cmd.match(/body\s*:\s*(['"])([\s\S]*?)\1\s*[,})]/)
+  if (bodyMatch) {
+    body = bodyMatch[2]
+  } else {
+    // body: JSON.stringify({...}) 或 body: JSON.stringify("...")
+    const stringifyMatch = cmd.match(/body\s*:\s*JSON\.stringify\s*\(([\s\S]*?)\)\s*[,})]/)
+    if (stringifyMatch) {
+      try {
+        // 尝试用 eval 解析（安全风险低，因为是用户自己粘贴的代码）
+        const parsed = new Function(`return ${stringifyMatch[1]}`)()
+        body = JSON.stringify(parsed)
+      } catch (e) {
+        body = stringifyMatch[1].trim()
+      }
+    } else {
+      // body: { ... } 直接是对象字面量
+      const objMatch = cmd.match(/body\s*:\s*(\{[\s\S]*?\})\s*[,})]/)
+      if (objMatch) {
+        try {
+          const parsed = new Function(`return ${objMatch[1]}`)()
+          body = JSON.stringify(parsed)
+        } catch (e) {
+          body = objMatch[1].trim()
+        }
+      }
+    }
+  }
+
+  return { url, method, headers, body }
+}
+
+// ─── PowerShell Invoke-RestMethod / Invoke-WebRequest 解析器 ───
+const parsePowerShellFormat = (cmd) => {
+  // 清洗折行符
+  const cleaned = cmd.replace(/`\r?\n/g, ' ')
+
+  // 提取 URL
+  const uriMatch = cleaned.match(/-Uri\s+(['"]?)(https?:\/\/[^'"\s]+)\1/i)
+  const urlMatch = cleaned.match(/-Url\s+(['"]?)(https?:\/\/[^'"\s]+)\1/i)
+  const url = (uriMatch?.[2] || urlMatch?.[2] || '').replace(/['"]/g, '')
+  if (!url) throw new Error('未找到有效 URL')
+
+  // 提取 Method
+  let method = 'GET'
+  const methodMatch = cleaned.match(/-Method\s+(['"]?)(\w+)\1/i)
+  if (methodMatch) method = methodMatch[2].toUpperCase()
+
+  // 提取 Headers (@{ key = value; ... })
+  const headers = {}
+  const hdrBlock = cleaned.match(/-Headers\s+(@\{[\s\S]*?\})\s*(-|$)/i)
+  if (hdrBlock) {
+    const hdrText = hdrBlock[1]
+    // 匹配 key = value 或 'key' = 'value' 或 "key" = "value"
+    const pairRe = /(['"]?)([\w-]+)\1\s*=\s*(['"]?)([^'";}]+)\3/g
+    let pm
+    while ((pm = pairRe.exec(hdrText)) !== null) {
+      headers[pm[2]] = pm[4]
+    }
+  }
+
+  // 提取 Body
+  let body = ''
+  const bodyMatch = cleaned.match(/-Body\s+(['"])([\s\S]*?)\1\s*(-|$)/)
+  if (bodyMatch) {
+    body = bodyMatch[2]
+  }
+
+  return { url, method, headers, body }
+}
+
+// ─── 统一入口 ───
+const parseCurl = (cmd) => {
+  console.log('检测命令格式...')
+  const format = detectFormat(cmd)
+  console.log('识别为:', format)
+
+  let result
+  switch (format) {
+    case 'fetch':
+      result = parseFetchFormat(cmd)
+      break
+    case 'powershell':
+      result = parsePowerShellFormat(cmd)
+      break
+    default:
+      result = parseCurlFormat(cmd)
+  }
+
+  // 尝试格式化 JSON body
+  try {
+    if (result.body) {
+      const parsed = JSON.parse(result.body)
+      result.body = JSON.stringify(parsed, null, 2)
+    }
+  } catch (e) {}
+
+  console.log('解析完成:', { url: result.url, method: result.method, headersCount: Object.keys(result.headers).length, hasBody: !!result.body })
+  return result
 }
 
 // 美化 JSON 文本
@@ -67,6 +306,7 @@ const handleFile = (e) => {
 const isDragging = ref(false)
 const onDragOver = (e) => {
   e.preventDefault()
+  e.stopPropagation()
   isDragging.value = true
 }
 const onDragLeave = () => {
@@ -74,6 +314,7 @@ const onDragLeave = () => {
 }
 const onDrop = (e) => {
   e.preventDefault()
+  e.stopPropagation()
   isDragging.value = false
   const file = e.dataTransfer?.files[0]
   if (file && (file.type === "application/json" || file.name.endsWith('.json') || file.name.endsWith('.txt'))) {
@@ -91,41 +332,103 @@ const onDrop = (e) => {
 
 // curl 导入
 const handleCurl = async () => {
-  if (!curlInput.value.trim()) return
+  if (!curlInput.value.trim()) {
+    showToast('请输入 curl 命令', 'error')
+    return
+  }
+
   loading.value = true
+
   try {
+    console.log('========== 开始处理 curl 命令 ==========')
     const { url, method, headers, body } = parseCurl(curlInput.value)
-    const opts = { method, headers: { ...headers } }
-    if (body && method !== 'GET') opts.body = body
+
+    const opts = {
+      method,
+      headers: { ...headers },
+      mode: 'cors',
+      credentials: 'omit'
+    }
+
+    if (body && method !== 'GET') {
+      opts.body = body
+    }
+
+    console.log('发送请求:', { url, method, headersCount: Object.keys(headers).length, hasBody: !!body })
+
     const res = await fetch(url, opts)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    emit('import-text', beautify(await res.text()))
-    showToast('curl 请求完成，已导入结果')
+    console.log('响应状态:', res.status, res.statusText)
+
+    const text = await res.text()
+
+    if (!res.ok) {
+      rawOutput.value = `HTTP ${res.status} ${res.statusText}\n\n${text}`
+      throw new Error(`HTTP ${res.status} ${res.statusText}`)
+    }
+
+    emit('import-text', beautify(text))
+    showToast('请求完成')
     panelOpen.value = false
-  } catch (e) { showToast(`curl 执行失败: ${e.message}`, 'error') }
-  finally { loading.value = false }
+
+  } catch (e) {
+    console.error('curl 请求失败:', e)
+
+    if (e.message.includes('Failed to fetch')) {
+      showToast('请求失败：CORS 跨域限制，请直接在 Network 面板复制响应数据', 'error')
+    } else {
+      showToast(e.message || '请求失败', 'error')
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+const copyRawOutput = () => {
+  navigator.clipboard.writeText(rawOutput.value).then(() => {
+    showToast('已复制原始输出')
+  }).catch(() => {
+    showToast('复制失败', 'error')
+  })
 }
 
 // URL 导入
 const handleUrl = async () => {
-  if (!urlInput.value.trim()) return
+  if (!urlInput.value.trim()) {
+    showToast('请输入 URL 地址', 'error')
+    return
+  }
   loading.value = true
   try {
     const url = urlInput.value.startsWith('http') ? urlInput.value : 'https://' + urlInput.value
+    console.log('发送请求到:', url)
+
     const res = await fetch(url)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    emit('import-text', beautify(await res.text()))
-    showToast('请求完成，已导入结果')
+
+    const text = await res.text()
+    emit('import-text', beautify(text))
+    showToast('请求完成')
     panelOpen.value = false
-  } catch (e) { showToast(`请求失败: ${e.message}`, 'error') }
-  finally { loading.value = false }
+  } catch (e) {
+    console.error('请求失败:', e)
+
+    if (e.message.includes('Failed to fetch')) {
+      showToast('请求失败：CORS 跨域限制，请直接在 Network 面板复制响应数据', 'error')
+    } else {
+      showToast(e.message || '请求失败', 'error')
+    }
+  } finally { loading.value = false }
 }
 
 // ─── UTF-8 安全 Base64 解码器 ───
 // 通过 Uint8Array 与 TextDecoder 转换原始二进制字节流，100% 解决各种非西欧字符（如中文）解码时的乱码问题
 const handleBase64 = () => {
-  if (!base64Input.value.trim()) return
+  if (!base64Input.value.trim()) {
+    showToast('请输入 Base64 密文', 'error')
+    return
+  }
   try {
+    console.log('开始解码 Base64，输入长度:', base64Input.value.length)
     const binString = atob(base64Input.value.trim())
     const len = binString.length
     const bytes = new Uint8Array(len)
@@ -133,11 +436,14 @@ const handleBase64 = () => {
       bytes[i] = binString.charCodeAt(i)
     }
     const decodedText = new TextDecoder('utf-8').decode(bytes)
+    console.log('解码成功，结果长度:', decodedText.length)
+
     emit('import-text', beautify(decodedText))
     showToast('Base64 解码成功')
     panelOpen.value = false
-  } catch (e) { 
-    showToast('Base64 解码失败，请检查输入格式是否正确', 'error') 
+  } catch (e) {
+    console.error('Base64 解码失败:', e)
+    showToast('Base64 解码失败，请检查输入格式是否正确', 'error')
   }
 }
 
@@ -154,13 +460,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
 <template>
   <div class="import-btn-wrap">
-    <!-- 优化后的高级微立体主按钮 -->
-    <button 
-      class="trigger-icon-btn outline" 
-      data-tooltip-bottom="导入" 
+    <button
+      class="trigger-btn"
+      :class="{ 'active': panelOpen }"
+      data-tooltip-bottom="导入数据"
       @click.stop="panelOpen = !panelOpen"
     >
-      <UploadCloud class="btn-icon" />
+      <UploadCloud class="trigger-icon" />
+      <span class="trigger-label">导入</span>
     </button>
 
     <!-- 下拉选项卡面板 -->
@@ -222,51 +529,80 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
         <!-- Tab 2: cURL 导入 -->
         <div v-if="activeTab === 'curl'" class="pane-content">
-          <textarea 
-            v-model="curlInput" 
-            placeholder="粘贴您的 cURL 请求命令，例如：&#10;curl 'https://api.example.com/data'" 
-            rows="5" 
+          <textarea
+            v-model="curlInput"
+            placeholder="支持 curl / fetch / PowerShell 格式"
+            rows="5"
             class="import-textarea"
+            @focus="handleCurlAutoPaste"
           ></textarea>
           <div class="pane-actions">
-            <span class="pane-hint">自动分析并发送 Method 和 Headers</span>
-            <button class="submit-btn" :disabled="loading" @click="handleCurl">
-              <RefreshCw v-if="loading" class="spinner" />
-              <span>{{ loading ? '请求中' : '执行解析' }}</span>
-            </button>
+            <span class="pane-hint"></span>
+            <div class="pane-actions-right">
+              <button class="clear-btn" @click="curlInput = ''" :disabled="!curlInput">
+                <span>清空</span>
+              </button>
+              <button class="submit-btn" :disabled="loading" @click="handleCurl">
+                <RefreshCw v-if="loading" class="spinner" />
+                <span>{{ loading ? '请求中' : '执行' }}</span>
+              </button>
+            </div>
+          </div>
+          <!-- 原始输出区域 -->
+          <div v-if="rawOutput" class="raw-output">
+            <div class="raw-output-header">
+              <span class="raw-output-title">原始响应</span>
+              <button class="copy-btn" @click="copyRawOutput">
+                <span>复制</span>
+              </button>
+            </div>
+            <div class="raw-output-content">{{ rawOutput }}</div>
           </div>
         </div>
 
         <!-- Tab 3: URL 导入 -->
         <div v-if="activeTab === 'url'" class="pane-content">
-          <input 
-            v-model="urlInput" 
-            placeholder="输入远程接口 API 地址..." 
-            class="import-input" 
-            @keyup.enter="handleUrl" 
-          />
+          <textarea
+            v-model="urlInput"
+            placeholder="输入 API 地址"
+            rows="5"
+            class="import-textarea"
+            @keyup.enter="handleUrl"
+            @focus="handleUrlAutoPaste"
+          ></textarea>
           <div class="pane-actions">
-            <span class="pane-hint">发送 GET 请求并格式化响应体</span>
-            <button class="submit-btn" :disabled="loading" @click="handleUrl">
-              <RefreshCw v-if="loading" class="spinner" />
-              <span>{{ loading ? '请求中' : '发送请求' }}</span>
-            </button>
+            <span class="pane-hint">发送 GET 请求并格式化响应</span>
+            <div class="pane-actions-right">
+              <button class="clear-btn" @click="urlInput = ''" :disabled="!urlInput">
+                <span>清空</span>
+              </button>
+              <button class="submit-btn" :disabled="loading" @click="handleUrl">
+                <RefreshCw v-if="loading" class="spinner" />
+                <span>{{ loading ? '请求中' : '发送' }}</span>
+              </button>
+            </div>
           </div>
         </div>
 
         <!-- Tab 4: Base64 解码 -->
         <div v-if="activeTab === 'base64'" class="pane-content">
-          <textarea 
-            v-model="base64Input" 
-            placeholder="在此粘贴您的 Base64 密文段落..." 
-            rows="5" 
+          <textarea
+            v-model="base64Input"
+            placeholder="粘贴 Base64 密文"
+            rows="5"
             class="import-textarea"
+            @focus="handleBase64AutoPaste"
           ></textarea>
           <div class="pane-actions">
-            <span class="pane-hint">在浏览器本地安全离线解码</span>
-            <button class="submit-btn" @click="handleBase64">
-              <span>解码并导入</span>
-            </button>
+            <span class="pane-hint">在浏览器本地安全解码</span>
+            <div class="pane-actions-right">
+              <button class="clear-btn" @click="base64Input = ''" :disabled="!base64Input">
+                <span>清空</span>
+              </button>
+              <button class="submit-btn" @click="handleBase64">
+                <span>解码</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -291,84 +627,52 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   --bg-input: #ffffff;
 }
 
-/* ─── 优化后的主入口触发图标按钮 ─── */
 .import-btn-wrap {
   position: relative;
 }
 
-.import-btn-wrap .trigger-icon-btn {
+/* 主触发按钮 — 与 toolbar-item 风格统一 */
+.trigger-btn {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: #ffffff;
-  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
-  border-radius: 8px;
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.6),
-    0 1px 2px rgba(0, 0, 0, 0.04);
-  cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.import-btn-wrap .trigger-icon-btn:hover {
-  border-color: rgba(0, 0, 0, 0.16);
-  background: #fbfbfb;
-  transform: translateY(-0.5px);
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.8),
-    0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-.import-btn-wrap .trigger-icon-btn:active {
-  transform: scale(0.96) translateY(0);
-}
-
-.import-btn-wrap .trigger-icon-btn .btn-icon {
-  width: 15px;
-  height: 15px;
-  color: var(--text-secondary, #52525b);
-}
-
-/* 主触发按钮 — 与复制/清空按钮风格统一 */
-.import-btn-wrap .trigger-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  border: 1px solid var(--border-color);
+  gap: 1px;
+  padding: 2px 8px;
+  min-width: 38px;
+  height: auto;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
   border-radius: 6px;
-  background: var(--action-btn-bg, #fff);
-  color: var(--text-primary);
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  transition: transform 0.1s ease, background-color 0.15s ease;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  transform: scale(1);
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
-.import-btn-wrap .trigger-icon-btn:hover {
-  background: var(--bg-app);
+.trigger-btn:hover {
+  background-color: var(--segmented-indicator-bg);
+  color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
 }
-.import-btn-wrap .trigger-icon-btn:active {
+.trigger-btn:active {
   transform: scale(0.95);
 }
-.import-btn-wrap .trigger-icon-btn .btn-icon {
-  width: 16px;
-  height: 16px;
+.trigger-btn.active {
+  background-color: var(--segmented-indicator-bg);
+  color: var(--text-primary);
+}
+.trigger-icon {
+  width: 15px;
+  height: 15px;
   flex-shrink: 0;
 }
-/* 暗色模式触发按钮 */
-.dark-mode .import-btn-wrap .trigger-icon-btn {
-  background: #18181b;
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 
-    inset 0 1px 0 rgba(255, 255, 255, 0.04),
-    0 1px 2px rgba(0, 0, 0, 0.2);
-}
-.dark-mode .import-btn-wrap .trigger-icon-btn:hover {
-  background: #202024;
-  border-color: rgba(255, 255, 255, 0.16);
+.trigger-label {
+  font-size: 10px;
+  line-height: 1;
 }
 
 /* ─── 下拉气泡面板（Retina 视网膜玻璃材质） ─── */
@@ -382,14 +686,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
   border-radius: 12px;
-  box-shadow: 
-    0 12px 30px -4px rgba(0, 0, 0, 0.08), 
+  box-shadow:
+    0 12px 30px -4px rgba(0, 0, 0, 0.08),
     0 4px 12px -2px rgba(0, 0, 0, 0.03);
   opacity: 0;
   visibility: hidden;
   transform: translateY(-4px);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 100;
+  z-index: 999; /* 提高层级避免被遮挡 */
   padding: 12px;
   display: flex;
   flex-direction: column;
@@ -449,7 +753,6 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
 /* ─── 统一高度内容区 ─── */
 .import-panes {
-  min-height: 172px; /* 锁死最小高度，切换时不抖动，顺滑无比 */
   display: flex;
   flex-direction: column;
 }
@@ -506,31 +809,78 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   color: var(--text-muted, #8e8e93);
 }
 
-/* ─── 绝美磨砂单色输入框/文本框 ─── */
+.dark-mode .drop-icon {
+  color: var(--text-muted, #a1a1aa);
+}
+.dark-mode .drop-title {
+  color: var(--text-primary, #e4e4e7);
+}
+.dark-mode .drop-title span {
+  color: var(--accent, #60a5fa);
+}
+.dark-mode .drop-desc {
+  color: var(--text-muted, #71717a);
+}
+
+/* ─── 终端/代码编辑器风格输入框（亮色） ─── */
 .import-textarea,
 .import-input {
   width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
-  border-radius: 6px;
-  background: var(--bg-input, #ffffff);
-  color: var(--text-primary, #111111);
-  font-size: 11.5px;
+  padding: 10px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #24292f;
+  font-size: 11px;
   font-family: var(--font-mono);
+  line-height: 1.6;
   box-sizing: border-box;
   outline: none;
-  transition: border-color 0.15s, box-shadow 0.15s;
+  caret-color: #0969da;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.import-textarea::selection,
+.import-input::selection {
+  background: rgba(9, 105, 218, 0.15);
 }
 .import-textarea {
-  resize: none; 
+  resize: none;
 }
 .import-input {
   height: 34px;
 }
 .import-textarea:focus,
 .import-input:focus {
-  border-color: var(--accent, #000000);
-  box-shadow: 0 0 0 2px var(--accent-glow, rgba(0, 0, 0, 0.04)); /* 细腻的双环聚焦高光 */
+  border-color: #0969da;
+  box-shadow: 0 0 0 3px rgba(9, 105, 218, 0.15);
+}
+
+.import-textarea::placeholder,
+.import-input::placeholder {
+  color: #8c959f;
+  opacity: 1;
+}
+
+/* ─── 暗色主题输入框 ─── */
+.dark-mode .import-textarea,
+.dark-mode .import-input {
+  background: #0d1117;
+  color: #e6edf3;
+  border-color: rgba(255, 255, 255, 0.08);
+  caret-color: #58a6ff;
+}
+.dark-mode .import-textarea::selection,
+.dark-mode .import-input::selection {
+  background: rgba(88, 166, 255, 0.25);
+}
+.dark-mode .import-textarea:focus,
+.dark-mode .import-input:focus {
+  border-color: #58a6ff;
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+}
+.dark-mode .import-textarea::placeholder,
+.dark-mode .import-input::placeholder {
+  color: #484f58;
 }
 
 /* ─── 底部 Action 栏 ─── */
@@ -543,10 +893,48 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .pane-hint {
   font-size: 10px;
-  color: var(--text-muted, #8e8e93);
+  color: var(--text-muted, #a1a1aa);
   line-height: 1.35;
-  max-width: 60%;
+  max-width: 50%;
 }
+
+.pane-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.clear-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color, rgba(0, 0, 0, 0.08));
+  border-radius: 6px;
+  background: var(--bg-input, #ffffff);
+  color: var(--text-secondary, #52525b);
+  font-size: 11.5px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.clear-btn:hover:not(:disabled) {
+  background: var(--bg-app, #f4f4f5);
+  color: var(--text-primary, #111111);
+}
+.clear-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.clear-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+
 
 /* ─── 重新设计的 Linear 风格带微光折折折叠按钮（大气、极度质感） ─── */
 .submit-btn {
@@ -623,4 +1011,77 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   opacity: 0;
   pointer-events: none;
 }
+
+/* ─── 原始输出区域（亮色） ─── */
+.raw-output {
+  margin-top: 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #ffffff;
+}
+.raw-output-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #f6f8fa;
+  border-bottom: 1px solid #d0d7de;
+}
+.raw-output-title {
+  font-size: 10px;
+  font-weight: 600;
+  color: #656d76;
+}
+.copy-btn {
+  padding: 3px 10px;
+  background: transparent;
+  border: 1px solid #d0d7de;
+  border-radius: 4px;
+  font-size: 10px;
+  font-family: var(--font-sans);
+  color: #656d76;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.copy-btn:hover {
+  background: #f6f8fa;
+  color: #24292f;
+}
+.raw-output-content {
+  padding: 10px 12px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: #24292f;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 140px;
+  overflow-y: auto;
+  line-height: 1.5;
+}
+
+/* ─── 原始输出区域（暗色） ─── */
+.dark-mode .raw-output {
+  background: #0d1117;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.dark-mode .raw-output-header {
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+.dark-mode .raw-output-title {
+  color: #8b949e;
+}
+.dark-mode .copy-btn {
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #8b949e;
+}
+.dark-mode .copy-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: #e6edf3;
+}
+.dark-mode .raw-output-content {
+  color: #e6edf3;
+}
+
 </style>

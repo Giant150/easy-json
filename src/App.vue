@@ -4,7 +4,7 @@ import JsonFormatter from './components/JsonFormatter.vue'
 import JsonComparer from './components/JsonComparer.vue'
 import HomeView from './components/HomeView.vue'
 import TestView from './components/TestView.vue'
-import { Sun, Moon, Split, Braces, CheckCircle, AlertTriangle, Palette, ArrowUpDown, Space, Zap, ClipboardCheck, Search, Home, Maximize, Clipboard, FlaskConical, Download, X } from 'lucide-vue-next'
+import { Sun, Moon, Split, Braces, CheckCircle, AlertTriangle, Palette, ArrowUpDown, ArrowUp, ArrowDown, Space, Zap, ClipboardCheck, Search, Home, Maximize, Clipboard, FlaskConical, Download, X } from 'lucide-vue-next'
 import { useUpdateCheck } from './composables/useUpdateCheck.js'
 import { useInstallCheck } from './composables/useInstallCheck.js'
 
@@ -57,7 +57,8 @@ const setTab = (tab) => {
 }
 const isDark = ref(true)
 const isPremiumTheme = ref(true)
-const sortKeys = ref(false)
+// sortKeys: 0 = off, 1 = asc (A→Z), 2 = desc (Z→A)
+const sortKeys = ref(0)
 const ignoreWhitespace = ref(true)
 const autoFormat = ref(true)
 const autoCopy = ref(true)
@@ -72,7 +73,7 @@ provide('autoExtract', autoExtract)
 provide('autoPaste', autoPaste)
 
 watch(sortKeys, (newVal) => {
-  localStorage.setItem('ej_global_sort_keys', newVal ? '1' : '0')
+  localStorage.setItem('ej_global_sort_keys', String(newVal))
 })
 
 watch(ignoreWhitespace, (newVal) => {
@@ -256,7 +257,7 @@ onMounted(() => {
   // Restore global sortKeys preference
   const savedGlobalSort = localStorage.getItem('ej_global_sort_keys')
   if (savedGlobalSort !== null) {
-    sortKeys.value = savedGlobalSort === '1'
+    sortKeys.value = parseInt(savedGlobalSort) || 0
   }
 
   // Restore global ignoreWhitespace preference
@@ -366,8 +367,15 @@ onBeforeUnmount(() => {
       </div>
       
       <div class="sidebar-bottom">
-        <button class="sidebar-btn" :class="{ active: sortKeys }" @click="sortKeys = !sortKeys" :data-tooltip-right="sortKeys ? '关闭全局按 Key 排序' : '开启全局按 Key 排序'">
-          <ArrowUpDown class="sidebar-btn-icon" />
+        <button
+          class="sidebar-btn"
+          :class="{ active: sortKeys !== 0 }"
+          @click="sortKeys = sortKeys === 0 ? 1 : sortKeys === 1 ? 2 : 0"
+          :data-tooltip-right="sortKeys === 0 ? '开启 Key 升序 A→Z' : sortKeys === 1 ? '切换为降序 Z→A' : '关闭 Key 排序'"
+        >
+          <ArrowUpDown v-if="sortKeys === 0" class="sidebar-btn-icon" />
+          <ArrowUp v-else-if="sortKeys === 1" class="sidebar-btn-icon" />
+          <ArrowDown v-else class="sidebar-btn-icon" />
         </button>
         <button class="sidebar-btn" :class="{ active: ignoreWhitespace }" @click="ignoreWhitespace = !ignoreWhitespace" :data-tooltip-right="ignoreWhitespace ? '关闭忽略空格' : '开启忽略空格'">
           <Space class="sidebar-btn-icon" />
