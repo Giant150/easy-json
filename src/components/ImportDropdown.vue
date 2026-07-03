@@ -867,7 +867,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   background: #0d1117;
   color: #e6edf3;
   border-color: rgba(255, 255, 255, 0.08);
-  caret-color: #58a6ff;
+  caret-color: #39ff14;
 }
 .dark-mode .import-textarea::selection,
 .dark-mode .import-input::selection {
@@ -875,8 +875,12 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .dark-mode .import-textarea:focus,
 .dark-mode .import-input:focus {
-  border-color: #58a6ff;
-  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+  border-color: #39ff14;
+  box-shadow: 0 0 0 3px rgba(57, 255, 20, 0.15);
+}
+.dark-mode .import-textarea::selection,
+.dark-mode .import-input::selection {
+  background: rgba(57, 255, 20, 0.25);
 }
 .dark-mode .import-textarea::placeholder,
 .dark-mode .import-input::placeholder {

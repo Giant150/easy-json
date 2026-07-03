@@ -713,6 +713,18 @@ html.popup-mode .editor-line {
   text-align: left;
 }
 
+/* 暗色主题：霓虹光标 */
+.dark-mode .editor-textarea,
+.dark-mode .edit-textarea {
+  caret-color: #39ff14;
+}
+
+/* 暗色主题：霓虹选中 */
+.dark-mode .editor-textarea::selection {
+  background: rgba(57, 255, 20, 0.25);
+  color: transparent;
+}
+
 /* Auto-wrap rules for minified/single-line JSON */
 .minify-wrap,
 .minify-wrap .line-code,
