@@ -620,6 +620,24 @@ const detectDuplicateKeys = (text) => {
 }
 
 // Perform formatting and validation
+// 右侧面板：窄屏隐藏，拉宽自动显示，缩窄自动隐藏
+const showOutput = ref(window.innerWidth >= 900)
+
+const updateShowOutput = () => {
+  showOutput.value = window.innerWidth >= 900
+}
+
+onMounted(() => {
+  if (window.__UTOOLS__) {
+    showOutput.value = false
+  }
+  window.addEventListener('resize', updateShowOutput)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateShowOutput)
+})
+
 let formatGuard = false // prevents re-entry when formatJSON updates inputText
 const formatJSON = () => {
   if (formatGuard) return
@@ -889,27 +907,34 @@ const outputGutterHtml = computed(() => {
 })
 
 const activeScrollTarget = ref(null)
+const treeWrapperRef = ref(null)
 
 const syncGutterScroll = () => {
   const scrollTop = textareaRef.value ? textareaRef.value.scrollTop : 0
   const scrollLeft = textareaRef.value ? textareaRef.value.scrollLeft : 0
-  
+
   // Sync Gutter
   if (gutterRef.value) {
     gutterRef.value.scrollTop = scrollTop
   }
-  
+
   // Sync highlight overlay
   if (inputHighlightRef.value) {
     inputHighlightRef.value.scrollTop = scrollTop
     inputHighlightRef.value.scrollLeft = scrollLeft
   }
-  
-  // Sync Output Pane
-  if (activeScrollTarget.value === 'left' && outputPreRef.value) {
-    outputPreRef.value.scrollTop = scrollTop
-    outputPreRef.value.scrollLeft = scrollLeft
-    if (outputGutterRef.value) outputGutterRef.value.scrollTop = scrollTop
+
+  // Sync Output Pane (text view)
+  if (activeScrollTarget.value === 'left') {
+    if (outputPreRef.value) {
+      outputPreRef.value.scrollTop = scrollTop
+      outputPreRef.value.scrollLeft = scrollLeft
+      if (outputGutterRef.value) outputGutterRef.value.scrollTop = scrollTop
+    }
+    // Sync tree view
+    if (treeWrapperRef.value) {
+      treeWrapperRef.value.scrollTop = scrollTop
+    }
   }
 }
 
@@ -936,6 +961,21 @@ const handleOutputScroll = () => {
   }
 }
 
+// 树形视图滚动同步
+const handleTreeScroll = () => {
+  if (activeScrollTarget.value === 'right' && treeWrapperRef.value) {
+    const scrollTop = treeWrapperRef.value.scrollTop
+    if (textareaRef.value) {
+      textareaRef.value.scrollTop = scrollTop
+    }
+    if (gutterRef.value) {
+      gutterRef.value.scrollTop = scrollTop
+    }
+    if (inputHighlightRef.value) {
+      inputHighlightRef.value.scrollTop = scrollTop
+    }
+  }
+}
 
 const getFormattedJsonString = (rawText) => {
   try {
@@ -1100,9 +1140,12 @@ const handleTextareaFocus = async () => {
   }
 }
 
-const handleTextareaBlur = () => {
+const handleTextareaBlur = (e) => {
   isTextareaFocused.value = false
-  textareaValue.value = ''
+  // 点击导入面板时不重置滚动位置
+  if (!e.relatedTarget || !e.relatedTarget.closest('.import-btn-wrap')) {
+    textareaValue.value = ''
+  }
 }
 
 const handleTextareaInput = (e) => {
@@ -2036,7 +2079,7 @@ onBeforeUnmount(() => {
 
 
     <!-- Main Workspace -->
-    <div class="workspace-grid" @dragover.prevent @drop.prevent="onDrop">
+    <div class="workspace-grid" :class="{ 'single-panel': !showOutput }" @dragover.prevent @drop.prevent="onDrop">
       <!-- Input Panel -->
       <div class="editor-panel">
         <div class="panel-header">
@@ -2073,6 +2116,15 @@ onBeforeUnmount(() => {
             <ImportDropdown @import-text="handleImportText" />
           </div>
           <div class="header-search-wrapper">
+            <button
+              v-if="!showOutput"
+              class="action-btn outline icon-only"
+              @click.stop="showOutput = true"
+              data-tooltip-bottom="显示输出面板"
+              style="height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; padding: 0;"
+            >
+              <Maximize2 class="btn-icon" />
+            </button>
             <button
               class="action-btn outline icon-only copy-btn"
               :class="{ 'copy-success-ring': copySuccess }"
@@ -2198,7 +2250,7 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- Output Panel -->
-      <div class="editor-panel">
+      <div class="editor-panel" v-if="showOutput">
         <div class="panel-header">
           <div class="header-left-group">
             <!-- View switch -->
@@ -2243,6 +2295,9 @@ onBeforeUnmount(() => {
           </div>
           
           <div class="header-actions-group">
+            <button class="action-btn outline icon-only" @click="showOutput = false" data-tooltip-bottom="隐藏输出">
+              <Minimize2 class="btn-icon" />
+            </button>
             <button v-if="activeTab.viewMode === 'tree' || activeTab.viewMode === 'table'" class="action-btn outline icon-only" @click="handleToggleExpand" :data-tooltip-bottom="treeExpanded ? '折叠全部节点' : '展开全部树节点'">
               <Maximize2 v-if="!treeExpanded" class="btn-icon" />
               <Minimize2 v-else class="btn-icon" />
@@ -2301,7 +2356,15 @@ onBeforeUnmount(() => {
           <Transition name="fade-slide" mode="out-in">
             <!-- Text output -->
             <!-- Tree view -->
-            <div v-if="activeTab.viewMode === 'tree' && activeTab.parsedObj" class="tree-wrapper" key="tree">
+            <div
+              v-if="activeTab.viewMode === 'tree' && activeTab.parsedObj"
+              class="tree-wrapper"
+              ref="treeWrapperRef"
+              key="tree"
+              @scroll="handleTreeScroll"
+              @mouseenter="activeScrollTarget = 'right'"
+              @touchstart="activeScrollTarget = 'right'"
+            >
               <JsonTreeNode :value="activeTab.parsedObj" :is-last="true" />
             </div>
 
@@ -2591,6 +2654,10 @@ onBeforeUnmount(() => {
   gap: 0;
   flex-grow: 1;
   min-height: 0;
+}
+
+.workspace-grid.single-panel {
+  grid-template-columns: 1fr;
 }
 
 /* Editor Panel */
