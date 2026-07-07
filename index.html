@@ -36,6 +36,8 @@
 
       // 51.la 统计 — 异步加载
       var laScript = document.createElement("script");
+      laScript.id = "LA_COLLECT";
+      laScript.charset = "UTF-8";
       laScript.src = "https://sdk.51.la/js-sdk-pro.min.js";
       laScript.async = true;
       laScript.onload = function() {

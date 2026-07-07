@@ -16,10 +16,7 @@ import { useHeroParticles } from '../composables/useHeroParticles.js'
 const heroRef = ref(null)
 const heroParticles = useHeroParticles()
 
-const trackDownload = (platform, event) => {
-  event.preventDefault()
-  const url = event.currentTarget.href
-
+const trackDownload = (platform) => {
   // 51.la 自定义事件追踪 (LA.track)
   if (window.LA && typeof window.LA.track === 'function') {
     let eventName = 'download_mac'
@@ -37,11 +34,6 @@ const trackDownload = (platform, event) => {
   if (window._hmt) {
     window._hmt.push(['_trackEvent', '下载', platform])
   }
-
-  // 延迟导航，确保统计请求已发出
-  setTimeout(() => {
-    window.open(url, '_blank')
-  }, 300)
 }
 
 const emit = defineEmits(['go-to-app', 'go-to-test'])
@@ -543,7 +535,7 @@ onBeforeUnmount(() => {
                   <h4 class="hero-dl-card-title">Chrome 插件</h4>
                   <p class="hero-dl-card-desc">网页选中文本右键即可提取 JSON</p>
                   <span class="hero-dl-card-meta">Chrome / Edge / Firefox</span>
-                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson-plugin.zip" class="hero-dl-card-btn" @click="trackDownload('Chrome插件', $event)">安装插件</a>
+                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson-plugin.zip" class="hero-dl-card-btn" @click="trackDownload('Chrome插件')">安装插件</a>
                 </div>
                 <!-- macOS -->
                 <div class="hero-dl-card">
@@ -554,7 +546,7 @@ onBeforeUnmount(() => {
                   </div>
                   <h4 class="hero-dl-card-title">macOS 客户端</h4>
                   <p class="hero-dl-card-desc">原生 Electron，支持 Apple Silicon 和 Intel</p>
-                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.dmg" class="hero-dl-card-btn" @click="trackDownload('macOS客户端', $event)">下载 macOS 版</a>
+                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.dmg" class="hero-dl-card-btn" @click="trackDownload('macOS客户端')">下载 macOS 版</a>
                 </div>
                 <!-- Windows -->
                 <div class="hero-dl-card">
@@ -566,7 +558,7 @@ onBeforeUnmount(() => {
                   <h4 class="hero-dl-card-title">Windows 客户端</h4>
                   <p class="hero-dl-card-desc">NSIS 安装包，即装即用</p>
                   <span class="hero-dl-card-meta">Windows 10 / 11 · 64位</span>
-                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.exe" class="hero-dl-card-btn" @click="trackDownload('Windows客户端', $event)">下载 .exe</a>
+                  <a href="https://croot-report.oss-cn-beijing.aliyuncs.com/easyjson.exe" class="hero-dl-card-btn" @click="trackDownload('Windows客户端')">下载 .exe</a>
                 </div>
                 <!-- uTools -->
                 <div class="hero-dl-card">
@@ -581,7 +573,7 @@ onBeforeUnmount(() => {
                   <h4 class="hero-dl-card-title">uTools 插件</h4>
                   <p class="hero-dl-card-desc">快捷键呼出，即用即走</p>
                   <span class="hero-dl-card-meta">macOS / Windows · uTools 平台</span>
-                  <a href="https://www.u-tools.cn/plugins/" target="_blank" class="hero-dl-card-btn" @click="trackDownload('uTools插件', $event)">前往插件市场</a>
+                  <a href="https://www.u-tools.cn/plugins/" target="_blank" class="hero-dl-card-btn" @click="trackDownload('uTools插件')">前往插件市场</a>
                 </div>
               </div>
             </div>
