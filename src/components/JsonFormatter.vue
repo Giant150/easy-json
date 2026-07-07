@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount, inject, provide, next
 import { useTabsDrag } from '../composables/useTabsDrag'
 import {
   Copy, Download, UploadCloud, Check, Trash2,
-  AlertTriangle, Braces, Eye, FileJson, ArrowRightLeft, Shuffle,
+  AlertTriangle, Braces, Eye, EyeOff, FileJson, ArrowRightLeft, Shuffle,
   ChevronDown, ChevronRight, ChevronUp, HelpCircle, Minimize2, Code, Search, Plus, X,
   Network, Table2, Menu, FileCode, Maximize2, Strikethrough, ListTree,
   Pencil, ArrowLeft, ArrowRight
@@ -2123,7 +2123,7 @@ onBeforeUnmount(() => {
               data-tooltip-bottom="显示输出面板"
               style="height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; padding: 0;"
             >
-              <Maximize2 class="btn-icon" />
+              <Eye class="btn-icon" />
             </button>
             <button
               class="action-btn outline icon-only copy-btn"
@@ -2296,7 +2296,7 @@ onBeforeUnmount(() => {
           
           <div class="header-actions-group">
             <button class="action-btn outline icon-only" @click="showOutput = false" data-tooltip-bottom="隐藏输出">
-              <Minimize2 class="btn-icon" />
+              <EyeOff class="btn-icon" />
             </button>
             <button v-if="activeTab.viewMode === 'tree' || activeTab.viewMode === 'table'" class="action-btn outline icon-only" @click="handleToggleExpand" :data-tooltip-bottom="treeExpanded ? '折叠全部节点' : '展开全部树节点'">
               <Maximize2 v-if="!treeExpanded" class="btn-icon" />

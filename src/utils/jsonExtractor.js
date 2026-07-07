@@ -531,6 +531,107 @@ export const convertJsObjectToJson = (text) => {
   return JSON.stringify(obj, null, 2)
 }
 
+// ═══ Java flat key=value (Lombok @ToString / Kotlin data class) ───
+// 继承溶化平铺算法：将 super=ClassName(...) 继承括号打散合入外层
+export const tryJavaFlatKeyValueToJson = (text) => {
+  if (!text || typeof text !== 'string') return null
+  let s = text.trim()
+  if (!s.includes('=')) return null
+
+  // 排除 query string：包含 & 且没有 Java 嵌套对象特征
+  if (/[?&]/.test(s) && !/[A-Z]\w{2,}[.([]/.test(s)) return null
+  // 排除单行简单 key=value（无 Java 嵌套对象 + 少于 3 对）
+  const kvPairs = (s.match(/\w[\w.]*\s*=/g) || []).length
+  const hasNested = /[A-Z]\w{2,}[.([]/.test(s)
+  if (!hasNested && kvPairs < 3) return null
+
+  try {
+    // 1. 单引号 → 双引号
+    s = s.replace(/'/g, '"')
+
+    // 去除首尾成对的外层括号（如果有）
+    while (s.startsWith('(') && s.endsWith(')')) {
+      let d = 0, ok = true
+      for (let i = 0; i < s.length - 1; i++) {
+        if (s[i] === '(') d++
+        else if (s[i] === ')') { d--; if (d === 0 && i < s.length - 1) { ok = false; break } }
+      }
+      if (ok && d === 1) s = s.slice(1, -1).trim()
+      else break
+    }
+    // 去除尾部未匹配的 )
+    let openC = 0, closeC = 0
+    for (const ch of s) { if (ch === '(') openC++; if (ch === ')') closeC++ }
+    while (closeC > openC && s.endsWith(')')) { s = s.slice(0, -1); closeC-- }
+
+    // 2. StatusEnum{...} → {...}
+    s = s.replace(/([a-zA-Z0-9_]+)\{([^}]+)\}/g, '{$2}')
+
+    // 3. 堆栈扫描：标记继承括号 + 删除 super=ClassName 前缀
+    const chars = Array.from(s)
+    const parenStack = []
+    const skipIndices = new Set()
+
+    for (let i = 0; i < chars.length; i++) {
+      if (chars[i] === '(') {
+        let prefix = ''
+        let ci = i - 1
+        while (ci >= 0 && chars[ci] !== '(' && chars[ci] !== ',' && chars[ci] !== ' ') {
+          prefix = chars[ci] + prefix
+          ci--
+        }
+        const isInheritance = /super=[a-zA-Z0-9_]+/i.test(prefix) || /^[a-zA-Z0-9_]+Dto$/i.test(prefix)
+        if (isInheritance) {
+          const superMatch = prefix.match(/(super=)?([A-Z][a-zA-Z0-9_]*)$/)
+          if (superMatch) {
+            const startIdx = i - superMatch[0].length
+            for (let j = startIdx; j < i; j++) skipIndices.add(j)
+          }
+        }
+        parenStack.push({ index: i, isInheritance })
+      } else if (chars[i] === ')') {
+        if (parenStack.length > 0) {
+          const lp = parenStack.pop()
+          if (lp.isInheritance) {
+            skipIndices.add(lp.index)
+            skipIndices.add(i)
+          }
+        }
+      }
+    }
+
+    // 4. 重建字符串
+    let melted = ''
+    for (let i = 0; i < chars.length; i++) {
+      if (skipIndices.has(i)) continue
+      melted += chars[i]
+    }
+
+    // 5. 包裹并转换剩余括号
+    melted = '{' + melted.replace(/\(/g, '{').replace(/\)/g, '}') + '}'
+
+    // 6. key= → "key":
+    melted = melted.replace(/([{\s,])([a-zA-Z0-9_]+)\s*=/g, '$1"$2":')
+
+    // 7. 空值补全
+    melted = melted.replace(/:\s*,/g, ': null,')
+    melted = melted.replace(/:\s*\}/g, ': null}')
+
+    // 8. 裸字符串加引号（大数字保留字符串）
+    melted = melted.replace(/:\s*([^"{}[\]\s,][^,}]*)/g, (match, val) => {
+      val = val.trim()
+      if (/^(true|false|null)$/i.test(val)) return ': ' + val.toLowerCase()
+      if (/^-?\d+(\.\d+)?$/.test(val) && val.replace(/[.-]/g, '').length <= 15) return ': ' + val
+      return ': "' + val + '"'
+    })
+
+    // 9. 解析并返回
+    const obj = JSON.parse(melted)
+    if (obj && typeof obj === 'object') return JSON.stringify(obj, null, 2)
+    return null
+  } catch (e) { return null }
+}
+
 // ═══ Java toString 递归解析器 ═══
 export const parseJavaValue = (text, pos) => {
   let i = pos
@@ -636,6 +737,10 @@ export const parseJavaValue = (text, pos) => {
     const after = afterNum.substring(numMatch[0].length)
     // 后面是 -数字 → ISO 日期；或 .数字 → IP/版本号。都当字符串处理
     if (!/^-\d/.test(after) && !/^\.\d/.test(after)) {
+      // 超过 15 位数字保留字符串，避免大数精度丢失
+      if (numMatch[0].replace(/[.-]/g, '').length > 15) {
+        return [numMatch[0], i + numMatch[0].length]
+      }
       const n = Number(numMatch[0])
       return [isNaN(n) ? numMatch[0] : n, i + numMatch[0].length]
     }
@@ -677,7 +782,8 @@ export const parseJavaValue = (text, pos) => {
   if (raw === 'null' || raw === '<null>') return [null, j]
   if (raw === 'true') return [true, j]
   if (raw === 'false') return [false, j]
-  if (/^-?\d+(\.\d+)?$/.test(raw)) return [Number(raw), j]
+  // 超过 15 位数字保持字符串，避免大数精度丢失（如银行账号）
+  if (/^-?\d+(\.\d+)?$/.test(raw) && raw.replace(/[.-]/g, '').length <= 15) return [Number(raw), j]
   return [raw, j]
 }
 
@@ -849,7 +955,13 @@ export const tryParseCandidate = (candidate) => {
     return converted
   } catch (e) {}
 
-  // 4) Java toString 递归解析
+  // 4) Java flat key=value (Lombok @ToString / Kotlin data class)
+  try {
+    const converted = tryJavaFlatKeyValueToJson(candidate)
+    if (converted) { JSON.parse(converted); return converted }
+  } catch (e) {}
+
+  // 5) Java toString 递归解析
   try {
     const converted = convertJavaToJson(candidate)
     if (converted) { JSON.parse(converted); return converted }
@@ -1405,6 +1517,7 @@ export const extractJsonFromText = (text) => {
     if (tsClean !== trimmed) {
       try { JSON.parse(tsClean); return { json: directResult, format: 'TypeScript' } } catch (e) {}
     }
+    try { if (tryJavaFlatKeyValueToJson(trimmed)) return { json: directResult, format: 'Java flat KV' } } catch (e) {}
     try { if (convertJavaToJson(trimmed)) return { json: directResult, format: 'Java toString' } } catch (e) {}
     try { if (convertPythonToJson(trimmed)) return { json: directResult, format: 'Python dict' } } catch (e) {}
     try { if (tryRubyHashToJson(trimmed)) return { json: directResult, format: 'Ruby Hash' } } catch (e) {}
