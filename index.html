@@ -31,8 +31,8 @@
     </script>
     <script>
     (function() {
-      // uTools 环境跳过统计（外部连接限制）
-      if (window.__UTOOLS__) return
+      // Tauri / uTools 桌面环境跳过统计
+      if (window.__TAURI__ || window.__TAURI_INTERNALS__ || window.__UTOOLS__) return
 
       // 51.la 统计 — 异步加载
       var laScript = document.createElement("script");

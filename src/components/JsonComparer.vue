@@ -7,11 +7,17 @@ import {
 } from 'lucide-vue-next'
 import * as diff from 'diff'
 import { useTabsDrag } from '../composables/useTabsDrag'
+import { extractJsonFromText } from '../utils/jsonExtractor.js'
 
 const showToast = inject('showToast')
 
 const sortKeys = inject('sortKeys', ref(false))
 const ignoreWhitespace = inject('ignoreWhitespace', ref(false))
+const autoFormat = inject('autoFormat', ref(false))
+const autoCopy = inject('autoCopy', ref(false))
+const autoPaste = inject('autoPaste', ref(false))
+const autoExtract = inject('autoExtract', ref(true))
+const lastPastedText = inject('lastPastedText', ref(''))
 const caseInsensitive = ref(false)
 
 const copySuccessLeft = ref(false)
@@ -26,8 +32,10 @@ const rightGutterRef = ref(null)
 const leftHighlightRef = ref(null)
 const rightHighlightRef = ref(null)
 
-const leftEditing = ref(false)
-const rightEditing = ref(false)
+const leftEditing = ref(true)
+const rightEditing = ref(true)
+const leftFocused = ref(false)
+const rightFocused = ref(false)
 
 const activeScrollTarget = ref(null)
 
@@ -413,6 +421,80 @@ watch(() => tabs.value.length, () => {
   saveComparerState()
 })
 
+const autoCopyResult = (text, isLeft) => {
+  if (!autoCopy.value || !text) return
+  lastPastedText.value = text.trim()
+  navigator.clipboard.writeText(text).then(() => {
+    if (showToast) {
+      // showToast(`${isLeft ? '原始' : '对比'} JSON 已自动复制到剪贴板`)
+    }
+  })
+}
+
+// Debounced auto-format and key-sorting on text changes in active textareas
+let leftFormatTimer = null
+watch(() => activeTab.value?.leftText, (newVal) => {
+  if (!autoFormat.value || !newVal) return
+  clearTimeout(leftFormatTimer)
+  leftFormatTimer = setTimeout(() => {
+    const tab = activeTab.value
+    if (!tab) return
+    try {
+      const parsed = JSON.parse(newVal)
+      const formatted = JSON.stringify(sortKeys.value ? sortJSONKeys(parsed, sortKeys.value === 2) : parsed, null, 2)
+      if (newVal.trim() !== formatted.trim()) {
+        const el = leftTextareaRef.value
+        const isFocused = document.activeElement === el
+        const start = el ? el.selectionStart : 0
+        const end = el ? el.selectionEnd : 0
+        
+        tab.leftText = formatted
+        tab.leftError = null
+        tab.leftErrorLine = null
+        
+        if (isFocused && el) {
+          nextTick(() => { el.setSelectionRange(start, end) })
+        }
+        autoCopyResult(formatted, true)
+      }
+    } catch (_) {}
+  }, 1000)
+})
+
+let rightFormatTimer = null
+watch(() => activeTab.value?.rightText, (newVal) => {
+  if (!autoFormat.value || !newVal) return
+  clearTimeout(rightFormatTimer)
+  rightFormatTimer = setTimeout(() => {
+    const tab = activeTab.value
+    if (!tab) return
+    try {
+      const parsed = JSON.parse(newVal)
+      const formatted = JSON.stringify(sortKeys.value ? sortJSONKeys(parsed, sortKeys.value === 2) : parsed, null, 2)
+      if (newVal.trim() !== formatted.trim()) {
+        const el = rightTextareaRef.value
+        const isFocused = document.activeElement === el
+        const start = el ? el.selectionStart : 0
+        const end = el ? el.selectionEnd : 0
+        
+        tab.rightText = formatted
+        tab.rightError = null
+        tab.rightErrorLine = null
+        
+        if (isFocused && el) {
+          nextTick(() => { el.setSelectionRange(start, end) })
+        }
+        autoCopyResult(formatted, false)
+      }
+    } catch (_) {}
+  }, 1000)
+})
+
+// Automatically re-format and sort textareas when key sorting settings change
+watch(sortKeys, () => {
+  formatInputs()
+})
+
 // Helper to check and format JSON strings
 const getFormattedText = (rawText) => {
   if (!rawText || !rawText.trim()) return ''
@@ -522,10 +604,16 @@ const formatInputs = () => {
   let success = false
   if (tab.leftText && tab.leftText.trim()) {
     try {
-      tab.leftText = JSON.stringify(JSON.parse(tab.leftText), null, 2)
+      let parsed = JSON.parse(tab.leftText)
+      if (sortKeys.value) {
+        parsed = sortJSONKeys(parsed, sortKeys.value === 2)
+      }
+      const formatted = JSON.stringify(parsed, null, 2)
+      tab.leftText = formatted
       tab.leftError = null
       tab.leftErrorLine = null
       success = true
+      autoCopyResult(formatted, true)
     } catch (err) {
       const { line } = getErrorLineAndColumn(err, tab.leftText)
       tab.leftError = `格式化左侧失败: ${err.message}`
@@ -534,10 +622,16 @@ const formatInputs = () => {
   }
   if (tab.rightText && tab.rightText.trim()) {
     try {
-      tab.rightText = JSON.stringify(JSON.parse(tab.rightText), null, 2)
+      let parsed = JSON.parse(tab.rightText)
+      if (sortKeys.value) {
+        parsed = sortJSONKeys(parsed, sortKeys.value === 2)
+      }
+      const formatted = JSON.stringify(parsed, null, 2)
+      tab.rightText = formatted
       tab.rightError = null
       tab.rightErrorLine = null
       success = true
+      autoCopyResult(formatted, false)
     } catch (err) {
       const { line } = getErrorLineAndColumn(err, tab.rightText)
       tab.rightError = `格式化右侧失败: ${err.message}`
@@ -661,28 +755,201 @@ const applyJsonHighlight = (text) => {
   })
 }
 
-const wrapLinesWithHighlight = (html, errorLine) => {
+const wrapLinesWithHighlight = (html, errorLine, lineClasses = []) => {
   if (!html) return ''
   const lines = html.replace(/\r/g, '').split('\n')
   const mapped = lines.map((line, index) => {
     const lineNum = index + 1
     const isError = errorLine === lineNum
-    const cls = isError ? 'editor-line has-error' : 'editor-line'
+    let cls = 'editor-line'
+    if (isError) cls += ' has-error'
+    if (lineClasses[index]) cls += ' ' + lineClasses[index]
     return `<div class="${cls}">${line || ' '}</div>`
   })
   return mapped.join('')
 }
 
+const diffAnalysis = computed(() => {
+  const tab = activeTab.value
+  if (!tab) return { left: [], right: [] }
+  const leftText = tab.leftText || ''
+  const rightText = tab.rightText || ''
+  
+  const leftLines = leftText.split('\n')
+  const rightLines = rightText.split('\n')
+  
+  const left = Array.from({ length: leftLines.length }, () => ({ type: 'normal', partnerIdx: null }))
+  const right = Array.from({ length: rightLines.length }, () => ({ type: 'normal', partnerIdx: null }))
+  
+  const options = {
+    ignoreCase: caseInsensitive.value,
+    ignoreWhitespace: ignoreWhitespace.value
+  }
+  
+  try {
+    const diffChunks = diff.diffLines(leftText, rightText, options)
+    
+    let leftIdx = 0
+    let rightIdx = 0
+    
+    for (let i = 0; i < diffChunks.length; i++) {
+      const chunk = diffChunks[i]
+      const count = chunk.count || chunk.value.replace(/\n$/, '').split('\n').length
+      
+      if (!chunk.added && !chunk.removed) {
+        for (let k = 0; k < count; k++) {
+          if (leftIdx + k < left.length) {
+            left[leftIdx + k] = { type: 'normal', partnerIdx: rightIdx + k }
+          }
+          if (rightIdx + k < right.length) {
+            right[rightIdx + k] = { type: 'normal', partnerIdx: leftIdx + k }
+          }
+        }
+        leftIdx += count
+        rightIdx += count
+      } else if (chunk.removed) {
+        const nextChunk = diffChunks[i + 1]
+        if (nextChunk && nextChunk.added) {
+          const nextCount = nextChunk.count || nextChunk.value.replace(/\n$/, '').split('\n').length
+          const minLines = Math.min(count, nextCount)
+          
+          for (let k = 0; k < minLines; k++) {
+            if (leftIdx + k < left.length) {
+              left[leftIdx + k] = { type: 'modified', partnerIdx: rightIdx + k }
+            }
+            if (rightIdx + k < right.length) {
+              right[rightIdx + k] = { type: 'modified', partnerIdx: leftIdx + k }
+            }
+          }
+          for (let k = minLines; k < count; k++) {
+            if (leftIdx + k < left.length) {
+              left[leftIdx + k] = { type: 'removed', partnerIdx: null }
+            }
+          }
+          for (let k = minLines; k < nextCount; k++) {
+            if (rightIdx + k < right.length) {
+              right[rightIdx + k] = { type: 'added', partnerIdx: null }
+            }
+          }
+          leftIdx += count
+          rightIdx += nextCount
+          i++
+        } else {
+          for (let k = 0; k < count; k++) {
+            if (leftIdx + k < left.length) {
+              left[leftIdx + k] = { type: 'removed', partnerIdx: null }
+            }
+          }
+          leftIdx += count
+        }
+      } else if (chunk.added) {
+        for (let k = 0; k < count; k++) {
+          if (rightIdx + k < right.length) {
+            right[rightIdx + k] = { type: 'added', partnerIdx: null }
+          }
+        }
+        rightIdx += count
+      }
+    }
+  } catch (_) {}
+  
+  return { left, right }
+})
+
+const leftLineClasses = computed(() => {
+  return diffAnalysis.value.left.map(line => {
+    if (line.type === 'removed') return 'diff-removed-line'
+    if (line.type === 'modified') return 'diff-modified-line'
+    return ''
+  })
+})
+
+const rightLineClasses = computed(() => {
+  return diffAnalysis.value.right.map(line => {
+    if (line.type === 'added') return 'diff-added-line'
+    if (line.type === 'modified') return 'diff-modified-line'
+    return ''
+  })
+})
+
 const highlightedLeft = computed(() => {
   const tab = activeTab.value
-  const html = applyJsonHighlight(tab?.leftText || '')
-  return wrapLinesWithHighlight(html, tab?.leftErrorLine)
+  if (!tab) return ''
+  const leftText = tab.leftText || ''
+  const rightText = tab.rightText || ''
+  const leftLines = leftText.split('\n')
+  const rightLines = rightText.split('\n')
+  
+  const options = {
+    ignoreCase: caseInsensitive.value,
+    ignoreWhitespace: ignoreWhitespace.value
+  }
+  
+  const linesHtml = leftLines.map((lineText, idx) => {
+    const analysis = diffAnalysis.value.left[idx]
+    if (!analysis) return applyJsonHighlight(lineText)
+    
+    if (analysis.type === 'normal' || analysis.type === 'removed') {
+      return applyJsonHighlight(lineText)
+    } else if (analysis.type === 'modified') {
+      const partnerText = rightLines[analysis.partnerIdx] || ''
+      const charDiffs = diff.diffChars(lineText, partnerText, options)
+      let htmlLine = ''
+      for (const d of charDiffs) {
+        if (d.added) continue
+        const escaped = d.value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        if (d.removed) {
+          htmlLine += `<span class="word-removed">${escaped}</span>`
+        } else {
+          htmlLine += escaped
+        }
+      }
+      return htmlLine
+    }
+    return ''
+  })
+  
+  return wrapLinesWithHighlight(linesHtml.join('\n'), tab.leftErrorLine, leftLineClasses.value)
 })
 
 const highlightedRight = computed(() => {
   const tab = activeTab.value
-  const html = applyJsonHighlight(tab?.rightText || '')
-  return wrapLinesWithHighlight(html, tab?.rightErrorLine)
+  if (!tab) return ''
+  const leftText = tab.leftText || ''
+  const rightText = tab.rightText || ''
+  const leftLines = leftText.split('\n')
+  const rightLines = rightText.split('\n')
+  
+  const options = {
+    ignoreCase: caseInsensitive.value,
+    ignoreWhitespace: ignoreWhitespace.value
+  }
+  
+  const linesHtml = rightLines.map((lineText, idx) => {
+    const analysis = diffAnalysis.value.right[idx]
+    if (!analysis) return applyJsonHighlight(lineText)
+    
+    if (analysis.type === 'normal' || analysis.type === 'added') {
+      return applyJsonHighlight(lineText)
+    } else if (analysis.type === 'modified') {
+      const partnerText = leftLines[analysis.partnerIdx] || ''
+      const charDiffs = diff.diffChars(partnerText, lineText, options)
+      let htmlLine = ''
+      for (const d of charDiffs) {
+        if (d.removed) continue
+        const escaped = d.value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        if (d.added) {
+          htmlLine += `<span class="word-added">${escaped}</span>`
+        } else {
+          htmlLine += escaped
+        }
+      }
+      return htmlLine
+    }
+    return ''
+  })
+  
+  return wrapLinesWithHighlight(linesHtml.join('\n'), tab.rightErrorLine, rightLineClasses.value)
 })
 
 const isLeftMinified = computed(() => {
@@ -694,6 +961,209 @@ const isRightMinified = computed(() => {
   const text = activeTab.value?.rightText || ''
   return !!text.trim() && !text.includes('\n')
 })
+
+// Auto extract JSON helper
+const applyAutoExtract = (isLeft) => {
+  const tab = activeTab.value
+  if (!tab) return
+  
+  const text = isLeft ? tab.leftText : tab.rightText
+  if (!text || !text.trim()) return
+  
+  // If already valid JSON, format if enabled
+  try {
+    const parsed = JSON.parse(text)
+    if (autoFormat.value) {
+      const formatted = JSON.stringify(sortKeys.value ? sortJSONKeys(parsed, sortKeys.value === 2) : parsed, null, 2)
+      if (text.trim() !== formatted.trim()) {
+        if (isLeft) tab.leftText = formatted
+        else tab.rightText = formatted
+        autoCopyResult(formatted, isLeft)
+      }
+    }
+    return
+  } catch (e) {}
+  
+  if (!autoExtract.value) return
+  
+  try {
+    const result = extractJsonFromText(text)
+    if (result && result.json !== text) {
+      if (isLeft) {
+        tab.leftText = result.json
+        tab.leftError = null
+        tab.leftErrorLine = null
+      } else {
+        tab.rightText = result.json
+        tab.rightError = null
+        tab.rightErrorLine = null
+      }
+      
+      if (showToast) {
+        showToast(result.format !== 'JSON' ? `已从 ${result.format} 提取 JSON` : '已自动提取 JSON')
+      }
+      
+      if (autoFormat.value) {
+        try {
+          const obj = JSON.parse(result.json)
+          const formatted = JSON.stringify(sortKeys.value ? sortJSONKeys(obj, sortKeys.value === 2) : obj, null, 2)
+          if (isLeft) tab.leftText = formatted
+          else tab.rightText = formatted
+          
+          autoCopyResult(formatted, isLeft)
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+}
+
+const handlePasteLeft = () => {
+  if (autoExtract.value) {
+    setTimeout(() => applyAutoExtract(true), 50)
+  } else if (autoFormat.value) {
+    setTimeout(() => {
+      const tab = activeTab.value
+      if (tab && tab.leftText) {
+        try {
+          const parsed = JSON.parse(tab.leftText)
+          const formatted = JSON.stringify(sortKeys.value ? sortJSONKeys(parsed, sortKeys.value === 2) : parsed, null, 2)
+          tab.leftText = formatted
+          tab.leftError = null
+          tab.leftErrorLine = null
+          autoCopyResult(formatted, true)
+        } catch (_) {}
+      }
+    }, 50)
+  }
+}
+
+const handlePasteRight = () => {
+  if (autoExtract.value) {
+    setTimeout(() => applyAutoExtract(false), 50)
+  } else if (autoFormat.value) {
+    setTimeout(() => {
+      const tab = activeTab.value
+      if (tab && tab.rightText) {
+        try {
+          const parsed = JSON.parse(tab.rightText)
+          const formatted = JSON.stringify(sortKeys.value ? sortJSONKeys(parsed, sortKeys.value === 2) : parsed, null, 2)
+          tab.rightText = formatted
+          tab.rightError = null
+          tab.rightErrorLine = null
+          autoCopyResult(formatted, false)
+        } catch (_) {}
+      }
+    }, 50)
+  }
+}
+
+let selectCopyTimer = null
+const copySelectedText = (text) => {
+  if (!text) return
+  clearTimeout(selectCopyTimer)
+  selectCopyTimer = setTimeout(() => {
+    lastPastedText.value = text.trim()
+    if (window.utools && typeof window.utools.copyText === 'function') {
+      window.utools.copyText(text)
+      if (showToast) showToast('已自动复制选中内容')
+      return
+    }
+    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+      import('@tauri-apps/api/core').then(({ invoke }) => {
+        invoke('write_clipboard', { text }).then(() => {
+          if (showToast) showToast('已自动复制选中内容')
+        }).catch(err => {
+          console.error('Tauri clipboard write failed:', err)
+        })
+      })
+      return
+    }
+    navigator.clipboard.writeText(text).then(() => {
+      if (showToast) showToast('已自动复制选中内容')
+    })
+  }, 200)
+}
+
+const handleSelectLeft = (e) => {
+  const el = e.target
+  if (el && el.selectionStart !== el.selectionEnd) {
+    const text = el.value.substring(el.selectionStart, el.selectionEnd)
+    copySelectedText(text)
+  }
+}
+
+const handleSelectRight = (e) => {
+  const el = e.target
+  if (el && el.selectionStart !== el.selectionEnd) {
+    const text = el.value.substring(el.selectionStart, el.selectionEnd)
+    copySelectedText(text)
+  }
+}
+
+// Focus and auto-paste helper
+const handleFocus = (isLeft) => {
+  activeScrollTarget.value = isLeft ? 'left' : 'right'
+  
+  if (!autoPaste.value) return
+  const tab = activeTab.value
+  if (!tab) return
+  
+  const textVal = isLeft ? tab.leftText : tab.rightText
+  if (textVal && textVal.trim()) return
+
+  // Delay clipboard reading slightly to allow the OS to synchronize the pasteboard
+  setTimeout(async () => {
+    const currentVal = isLeft ? tab.leftText : tab.rightText
+    if (currentVal && currentVal.trim()) return
+
+    const processAutoPaste = (text) => {
+      if (!text || !text.trim()) return
+      const trimmed = text.trim()
+      if (trimmed === lastPastedText.value) return
+      
+      lastPastedText.value = trimmed
+      if (isLeft) {
+        tab.leftText = text
+        applyAutoExtract(true)
+      } else {
+        tab.rightText = text
+        applyAutoExtract(false)
+      }
+      if (showToast) showToast('已自动粘贴')
+    }
+
+    // 1. uTools environment
+    if (window.utools && typeof window.utools.readText === 'function') {
+      try {
+        const text = window.utools.readText()
+        processAutoPaste(text)
+      } catch (e) {
+        console.warn('uTools clipboard read failed:', e)
+      }
+      return
+    }
+
+    // 2. Tauri native environment
+    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const text = await invoke('read_clipboard')
+        processAutoPaste(text)
+      } catch (e) {
+        console.error('Tauri clipboard read failed:', e)
+      }
+      return
+    }
+
+    // 3. Standard Web environment
+    try {
+      const text = await navigator.clipboard.readText()
+      processAutoPaste(text)
+    } catch (e) {
+      // silently ignore
+    }
+  }, 250)
+}
 
 // Synchronized scrolling logic for gutters inside textareas
 const handleLeftTextareaScroll = () => {
@@ -788,61 +1258,47 @@ const startEditingRight = () => {
 }
 
 const stopEditingLeft = () => {
-  if (!leftEditing.value) return
-  const scrollTop = leftTextareaRef.value ? leftTextareaRef.value.scrollTop : 0
-  const scrollLeft = leftTextareaRef.value ? leftTextareaRef.value.scrollLeft : 0
-  
-  leftEditing.value = false
-  
-  // Auto-format Left if valid
   const tab = activeTab.value
-  if (tab && tab.leftText) {
+  if (!tab || !tab.leftText) return
+  if (autoFormat.value) {
     try {
-      const parsed = JSON.parse(tab.leftText)
-      tab.leftText = JSON.stringify(parsed, null, 2)
+      let parsed = JSON.parse(tab.leftText)
+      if (sortKeys.value) {
+        parsed = sortJSONKeys(parsed, sortKeys.value === 2)
+      }
+      const formatted = JSON.stringify(parsed, null, 2)
+      tab.leftText = formatted
       tab.leftError = null
       tab.leftErrorLine = null
+      autoCopyResult(formatted, true)
     } catch (err) {
-      // keep raw, but re-validate to ensure correct error line highlight
       validateJson(tab.leftText, true)
     }
+  } else {
+    validateJson(tab.leftText, true)
   }
-  
-  nextTick(() => {
-    if (leftPaneRef.value) {
-      leftPaneRef.value.scrollTop = scrollTop
-      leftPaneRef.value.scrollLeft = scrollLeft
-    }
-  })
 }
 
 const stopEditingRight = () => {
-  if (!rightEditing.value) return
-  const scrollTop = rightTextareaRef.value ? rightTextareaRef.value.scrollTop : 0
-  const scrollLeft = rightTextareaRef.value ? rightTextareaRef.value.scrollLeft : 0
-  
-  rightEditing.value = false
-  
-  // Auto-format Right if valid
   const tab = activeTab.value
-  if (tab && tab.rightText) {
+  if (!tab || !tab.rightText) return
+  if (autoFormat.value) {
     try {
-      const parsed = JSON.parse(tab.rightText)
-      tab.rightText = JSON.stringify(parsed, null, 2)
+      let parsed = JSON.parse(tab.rightText)
+      if (sortKeys.value) {
+        parsed = sortJSONKeys(parsed, sortKeys.value === 2)
+      }
+      const formatted = JSON.stringify(parsed, null, 2)
+      tab.rightText = formatted
       tab.rightError = null
       tab.rightErrorLine = null
+      autoCopyResult(formatted, false)
     } catch (err) {
-      // keep raw, but re-validate to ensure correct error line highlight
       validateJson(tab.rightText, false)
     }
+  } else {
+    validateJson(tab.rightText, false)
   }
-  
-  nextTick(() => {
-    if (rightPaneRef.value) {
-      rightPaneRef.value.scrollTop = scrollTop
-      rightPaneRef.value.scrollLeft = scrollLeft
-    }
-  })
 }
 
 const leftLinesCount = computed(() => {
@@ -1025,7 +1481,7 @@ const copyRightText = () => {
   if (!tab || !tab.rightText) return
   navigator.clipboard.writeText(tab.rightText).then(() => {
     copySuccessRight.value = true
-    if (showToast) showToast('对比 JSON 已复制到剪贴板')
+    // if (showToast) showToast('对比 JSON 已复制到剪贴板')
     setTimeout(() => { copySuccessRight.value = false }, 2000)
   })
 }
@@ -1160,14 +1616,14 @@ onMounted(() => {
             <!-- Edit Mode -->
             <div v-if="leftEditing" class="edit-pane-container">
               <div class="edit-gutter" ref="leftGutterRef">
-                <div v-for="n in leftLinesCount" :key="n" class="edit-line-number" :class="{ 'has-error': activeTab.leftErrorLine === n }">{{ n }}</div>
+                <div v-for="n in leftLinesCount" :key="n" class="edit-line-number" :class="{ 'has-error': activeTab.leftErrorLine === n, 'diff-removed-line-number': leftLineClasses[n - 1] === 'diff-removed-line', 'diff-modified-line-number': leftLineClasses[n - 1] === 'diff-modified-line' }">{{ n }}</div>
               </div>
               <div class="textarea-overlay-container" :class="{ 'minify-wrap': isLeftMinified }">
                 <div
                   ref="leftHighlightRef"
                   class="editor-highlight"
                   aria-hidden="true"
-                  v-html="highlightedLeft || '<span class=\'placeholder\'>粘贴或输入左侧 JSON...</span>'"
+                  v-html="highlightedLeft || (leftFocused ? '' : '<div class=\'editor-line placeholder\'>粘贴或输入左侧 JSON...</div>')"
                 ></div>
                 <textarea 
                   v-model="activeTab.leftText" 
@@ -1176,8 +1632,10 @@ onMounted(() => {
                   @scroll="handleLeftTextareaScroll"
                   @mouseenter="activeScrollTarget = 'left'"
                   @touchstart="activeScrollTarget = 'left'"
-                  @focus="activeScrollTarget = 'left'"
-                  @blur="stopEditingLeft"
+                  @focus="leftFocused = true; handleFocus(true)"
+                  @blur="leftFocused = false; stopEditingLeft()"
+                  @paste="handlePasteLeft"
+                  @select="handleSelectLeft"
                   placeholder=""
                   spellcheck="false"
                 ></textarea>
@@ -1277,14 +1735,14 @@ onMounted(() => {
             <!-- Edit Mode -->
             <div v-if="rightEditing" class="edit-pane-container">
               <div class="edit-gutter" ref="rightGutterRef">
-                <div v-for="n in rightLinesCount" :key="n" class="edit-line-number" :class="{ 'has-error': activeTab.rightErrorLine === n }">{{ n }}</div>
+                <div v-for="n in rightLinesCount" :key="n" class="edit-line-number" :class="{ 'has-error': activeTab.rightErrorLine === n, 'diff-added-line-number': rightLineClasses[n - 1] === 'diff-added-line', 'diff-modified-line-number': rightLineClasses[n - 1] === 'diff-modified-line' }">{{ n }}</div>
               </div>
               <div class="textarea-overlay-container" :class="{ 'minify-wrap': isRightMinified }">
                 <div
                   ref="rightHighlightRef"
                   class="editor-highlight"
                   aria-hidden="true"
-                  v-html="highlightedRight || '<span class=\'placeholder\'>粘贴或输入右侧 JSON...</span>'"
+                  v-html="highlightedRight || (rightFocused ? '' : '<div class=\'editor-line placeholder\'>粘贴或输入右侧 JSON...</div>')"
                 ></div>
                 <textarea 
                   v-model="activeTab.rightText" 
@@ -1293,8 +1751,10 @@ onMounted(() => {
                   @scroll="handleRightTextareaScroll"
                   @mouseenter="activeScrollTarget = 'right'"
                   @touchstart="activeScrollTarget = 'right'"
-                  @focus="activeScrollTarget = 'right'"
-                  @blur="stopEditingRight"
+                  @focus="rightFocused = true; handleFocus(false)"
+                  @blur="rightFocused = false; stopEditingRight()"
+                  @paste="handlePasteRight"
+                  @select="handleSelectRight"
                   placeholder=""
                   spellcheck="false"
                 ></textarea>
@@ -1963,19 +2423,52 @@ onMounted(() => {
 }
 
 /* Character level word highlighting */
-.word-added {
+:deep(.word-added), .word-added {
   background-color: var(--diff-added-word-bg);
   border-radius: 6px;
   padding: 1px 0;
   font-weight: 500;
 }
 
-.word-removed {
+:deep(.word-removed), .word-removed {
   background-color: var(--diff-removed-word-bg);
   border-radius: 6px;
   padding: 1px 0;
   font-weight: 500;
   text-decoration: line-through;
+}
+
+/* Real-time Diff Highlight in Editor Mode */
+:deep(.editor-line.diff-removed-line) {
+  background-color: var(--diff-removed-bg);
+  box-shadow: inset 2px 0 0 var(--error-text);
+}
+:deep(.editor-line.diff-added-line) {
+  background-color: var(--diff-added-bg);
+  box-shadow: inset 2px 0 0 var(--success-text);
+}
+:deep(.editor-line.diff-modified-line) {
+  background-color: var(--diff-modified-bg);
+  box-shadow: inset 2px 0 0 #d97706;
+}
+:deep(.dark-mode) .editor-line.diff-modified-line {
+  box-shadow: inset 2px 0 0 #fbbf24;
+}
+.edit-line-number.diff-removed-line-number {
+  background-color: rgba(239, 68, 68, 0.05);
+  color: var(--error-text);
+}
+.edit-line-number.diff-added-line-number {
+  background-color: rgba(34, 197, 94, 0.05);
+  color: var(--success-text);
+}
+.edit-line-number.diff-modified-line-number {
+  background-color: rgba(217, 119, 6, 0.05);
+  color: #d97706;
+}
+.dark-mode .edit-line-number.diff-modified-line-number {
+  background-color: rgba(251, 191, 36, 0.05);
+  color: #fbbf24;
 }
 
 @media (max-width: 600px) {

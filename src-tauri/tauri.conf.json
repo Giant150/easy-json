@@ -43,7 +43,21 @@
       }
     },
     "macOS": {
-      "minimumSystemVersion": "11.0"
+      "minimumSystemVersion": "11.0",
+      "dmg": {
+        "windowSize": {
+          "width": 500,
+          "height": 300
+        },
+        "appPosition": {
+          "x": 120,
+          "y": 120
+        },
+        "applicationFolderPosition": {
+          "x": 380,
+          "y": 120
+        }
+      }
     }
   }
 }

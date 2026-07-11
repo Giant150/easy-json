@@ -51,7 +51,27 @@
       "Bash(sips -g pixelWidth -g pixelHeight /Users/apple/GithubProjects/easy-json/src-tauri/icons/icon.icns)",
       "Bash(sips -g all /Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyJSON.app/Contents/Resources/icon.icns)",
       "Bash(python3 -c \"from PIL import Image; print\\('pillow OK'\\)\")",
-      "Bash(osascript -e 'tell application \"Finder\" to get name of every window')"
+      "Bash(osascript -e 'tell application \"Finder\" to get name of every window')",
+      "Bash(md5 -q /Users/apple/GithubProjects/easy-json/dist/index.html)",
+      "Bash(md5sum -v)",
+      "Bash(md5 /Users/apple/GithubProjects/easy-json/dist/index.html)",
+      "Bash(md5 /Users/apple/GithubProjects/easy-json/index.html)",
+      "Bash(\"/Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyJSON.app/Contents/MacOS/easy-json\")",
+      "Bash(kill %1)",
+      "Bash(open \"/Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyJSON.app\")",
+      "Read(//Users/apple/Library/Logs/DiagnosticReports/**)",
+      "Bash(pkill -x \"easyJSON\")",
+      "Bash(pkill -x \"easy-json\")",
+      "Read(//Users/apple/Library/Logs/**)",
+      "Read(//Users/apple/Library/Application Support/**)",
+      "Bash(otool -L \"/Users/apple/GithubProjects/easy-json/src-tauri/target/release/bundle/macos/easyJSON.app/Contents/MacOS/easy-json\")",
+      "Bash(osascript -e 'tell application \"System Events\" to get name of every process whose visible is true')",
+      "Read(//Applications/easyJSON.app/Contents/MacOS/**)",
+      "Read(//Applications/easyJSON.app/**)",
+      "Bash(osascript -e 'tell application \"System Events\" to set frontmost of process \"easy-json\" to true')",
+      "Bash(screencapture -x /tmp/easyjson_screen.png)",
+      "Read(//tmp/**)",
+      "Read(//private/tmp/**)"
     ]
   }
 }

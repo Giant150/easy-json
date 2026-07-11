@@ -905,7 +905,8 @@ export const convertPythonToJson = (text) => {
     // Python → JS 语法转换
     let js = cleaned
       // tuple (...) → array [...]  (但不转 key(...) 调用)
-      .replace(/(?<![A-Za-z_])\(/g, '[').replace(/(?<![A-Za-z_])\)/g, ']')
+      .replace(/([A-Za-z_])?\(/g, (match, p1) => p1 ? match : '[')
+      .replace(/([A-Za-z_])?\)/g, (match, p1) => p1 ? match : ']')
       // Python 常量
       .replace(/\bTrue\b/g, 'true')
       .replace(/\bFalse\b/g, 'false')
@@ -1502,7 +1503,7 @@ export const extractJsonFromText = (text) => {
 
   // ── Pre-process: JSONC/JSON5 注释剥离后再解析 ──
   // 排除 URL 中的 :// 误判为注释
-  const hasRealComment = /(?<!:)\/\//.test(trimmed) || /\/\*/.test(trimmed)
+  const hasRealComment = /(^|[^:])\/\//.test(trimmed) || /\/\*/.test(trimmed)
   if (hasRealComment) {
     const noComment = stripJsonComments(trimmed)
     const commentResult = tryParseCandidate(noComment)

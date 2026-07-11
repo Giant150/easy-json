@@ -23,6 +23,7 @@ const autoFormat = inject('autoFormat', ref(false))
 const autoCopy = inject('autoCopy', ref(false))
 const autoExtract = inject('autoExtract', ref(true))
 const autoPaste = inject('autoPaste', ref(false))
+const lastPastedText = inject('lastPastedText', ref(''))
 
 const copySuccess = ref(false)
 const gutterRef = ref(null)
@@ -869,6 +870,7 @@ watch(() => activeTab.value?.inputText, (newVal) => {
 // 操作后自动复制
 const autoCopyResult = (text) => {
   if (!autoCopy.value || !text) return
+  lastPastedText.value = text.trim()
   navigator.clipboard.writeText(text).then(() => {
     showToast('已自动复制到剪贴板')
   })
@@ -1089,7 +1091,7 @@ const copyToClipboard = () => {
 }
 
 // Handle editor textarea focus (auto-paste support)
-const handleTextareaFocus = async () => {
+const handleTextareaFocus = () => {
   activeScrollTarget.value = 'left'
   isTextareaFocused.value = true
   textareaValue.value = activeTab.value?.inputText || ''
@@ -1099,45 +1101,55 @@ const handleTextareaFocus = async () => {
   // Only auto-paste into empty input
   if (tab.inputText.trim()) return
 
-  // 1. uTools environment
-  if (window.utools && typeof window.utools.readText === 'function') {
-    try {
-      const text = window.utools.readText()
-      if (text && text.trim()) {
-        tab.inputText = text
-        showToast('已自动粘贴')
-      }
-    } catch (e) {
-      console.warn('uTools clipboard read failed:', e)
-    }
-    return
-  }
+  // Delay clipboard reading slightly to allow the OS to synchronize the pasteboard
+  setTimeout(async () => {
+    if (tab.inputText.trim()) return
 
-  // 2. Tauri native environment
-  if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
-    try {
-      const { invoke } = await import('@tauri-apps/api/core')
-      const text = await invoke('read_clipboard')
-      if (text && text.trim()) {
-        tab.inputText = text
-        showToast('已自动粘贴')
-      }
-    } catch (e) {
-      console.error('Tauri clipboard read failed:', e)
-    }
-    return
-  }
-
-  // 3. Standard Web environment
-  try {
-    const text = await navigator.clipboard.readText()
-    if (text && text.trim()) {
+    const processAutoPaste = (text) => {
+      if (!text || !text.trim()) return
+      const trimmed = text.trim()
+      if (trimmed === lastPastedText.value) return
+      
+      lastPastedText.value = trimmed
       tab.inputText = text
+      textareaValue.value = text
+      if (autoExtract.value) {
+        applyAutoExtract()
+      }
       showToast('已自动粘贴')
     }
-  } catch (e) {
-    // Clipboard read requires permission or https — silently ignore
-  }
+
+    // 1. uTools environment
+    if (window.utools && typeof window.utools.readText === 'function') {
+      try {
+        const text = window.utools.readText()
+        processAutoPaste(text)
+      } catch (e) {
+        console.warn('uTools clipboard read failed:', e)
+      }
+      return
+    }
+
+    // 2. Tauri native environment
+    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const text = await invoke('read_clipboard')
+        processAutoPaste(text)
+      } catch (e) {
+        console.error('Tauri clipboard read failed:', e)
+      }
+      return
+    }
+
+    // 3. Standard Web environment
+    try {
+      const text = await navigator.clipboard.readText()
+      processAutoPaste(text)
+    } catch (e) {
+      // Clipboard read requires permission or https — silently ignore
+    }
+  }, 250)
 }
 
 const handleTextareaBlur = (e) => {
@@ -2222,7 +2234,7 @@ onBeforeUnmount(() => {
               <div
                 ref="inputHighlightRef"
                 class="editor-highlight"
-                v-html="highlightedInput || '<span class=\'placeholder\'>在此粘贴或拖入你的 JSON 数据...</span>'"
+                v-html="highlightedInput || (isTextareaFocused ? '' : '<div class=\'editor-line placeholder\'>在此粘贴或拖入你的 JSON 数据...</div>')"
               ></div>
               <!-- Transparent textarea on top -->
               <textarea
