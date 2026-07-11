@@ -23,7 +23,7 @@ const autoFormat = inject('autoFormat', ref(false))
 const autoCopy = inject('autoCopy', ref(false))
 const autoExtract = inject('autoExtract', ref(true))
 const autoPaste = inject('autoPaste', ref(false))
-const lastPastedText = inject('lastPastedText', ref(''))
+const formatterLastPasted = ref('')
 
 const copySuccess = ref(false)
 const gutterRef = ref(null)
@@ -814,6 +814,10 @@ watch(
   }
 )
 
+watch(activeTabId, () => {
+  formatterLastPasted.value = ''
+})
+
 // 对指定 tab 的输入文本执行智能提取（提取成功后替换原始输入）
 // 被 handlePaste 和 checkExtractOnLoad 共用
 const applyAutoExtract = (tab = activeTab.value) => {
@@ -870,7 +874,25 @@ watch(() => activeTab.value?.inputText, (newVal) => {
 // 操作后自动复制
 const autoCopyResult = (text) => {
   if (!autoCopy.value || !text) return
-  lastPastedText.value = text.trim()
+  formatterLastPasted.value = text.trim()
+  
+  if (window.utools && typeof window.utools.copyText === 'function') {
+    window.utools.copyText(text)
+    showToast('已自动复制到剪贴板')
+    return
+  }
+  
+  if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke('write_clipboard', { text }).then(() => {
+        showToast('已自动复制到剪贴板')
+      }).catch(err => {
+        console.error('Tauri clipboard write failed:', err)
+      })
+    })
+    return
+  }
+  
   navigator.clipboard.writeText(text).then(() => {
     showToast('已自动复制到剪贴板')
   })
@@ -1108,9 +1130,9 @@ const handleTextareaFocus = () => {
     const processAutoPaste = (text) => {
       if (!text || !text.trim()) return
       const trimmed = text.trim()
-      if (trimmed === lastPastedText.value) return
+      if (trimmed === formatterLastPasted.value) return
       
-      lastPastedText.value = trimmed
+      formatterLastPasted.value = trimmed
       tab.inputText = text
       textareaValue.value = text
       if (autoExtract.value) {
@@ -1149,7 +1171,7 @@ const handleTextareaFocus = () => {
     } catch (e) {
       // Clipboard read requires permission or https — silently ignore
     }
-  }, 250)
+  }, 50)
 }
 
 const handleTextareaBlur = (e) => {
@@ -1157,6 +1179,26 @@ const handleTextareaBlur = (e) => {
   // 点击导入面板时不重置滚动位置
   if (!e.relatedTarget || !e.relatedTarget.closest('.import-btn-wrap')) {
     textareaValue.value = ''
+  }
+}
+
+const handleCut = (e) => {
+  const el = e.target
+  if (el) {
+    const text = el.value.substring(el.selectionStart, el.selectionEnd)
+    if (text) {
+      formatterLastPasted.value = text.trim()
+    }
+  }
+}
+
+const handleCopy = (e) => {
+  const el = e.target
+  if (el) {
+    const text = el.value.substring(el.selectionStart, el.selectionEnd)
+    if (text) {
+      formatterLastPasted.value = text.trim()
+    }
   }
 }
 
@@ -2249,6 +2291,8 @@ onBeforeUnmount(() => {
                 @input="handleTextareaInput"
                 @scroll="syncGutterScroll"
                 @paste="handlePaste"
+                @cut="handleCut"
+                @copy="handleCopy"
                 @mouseenter="activeScrollTarget = 'left'"
                 @touchstart="activeScrollTarget = 'left'"
                 @focus="handleTextareaFocus"

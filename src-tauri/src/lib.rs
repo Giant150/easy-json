@@ -22,9 +22,31 @@ fn is_installed() -> bool {
 }
 
 #[tauri::command]
-fn read_clipboard() -> Result<String, String> {
-    let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
-    clipboard.get_text().map_err(|e| e.to_string())
+async fn read_clipboard(app: tauri::AppHandle) -> Result<String, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || {
+        let res = match arboard::Clipboard::new() {
+            Ok(mut clipboard) => clipboard.get_text().map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        let _ = tx.send(res);
+    }).map_err(|e| e.to_string())?;
+
+    rx.await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn write_clipboard(app: tauri::AppHandle, text: String) -> Result<(), String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.run_on_main_thread(move || {
+        let res = match arboard::Clipboard::new() {
+            Ok(mut clipboard) => clipboard.set_text(text).map_err(|e| e.to_string()),
+            Err(e) => Err(e.to_string()),
+        };
+        let _ = tx.send(res);
+    }).map_err(|e| e.to_string())?;
+
+    rx.await.map_err(|e| e.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -32,8 +54,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![is_installed, read_clipboard])
+        .invoke_handler(tauri::generate_handler![is_installed, read_clipboard, write_clipboard])
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            {
+                if let Ok(menu) = tauri::menu::Menu::default(app.handle()) {
+                    let _ = app.set_menu(menu);
+                }
+            }
+
             let show_item = MenuItemBuilder::with_id("show", "显示窗口").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
             let tray_menu = MenuBuilder::new(app)

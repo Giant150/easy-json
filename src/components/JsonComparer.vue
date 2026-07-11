@@ -17,7 +17,8 @@ const autoFormat = inject('autoFormat', ref(false))
 const autoCopy = inject('autoCopy', ref(false))
 const autoPaste = inject('autoPaste', ref(false))
 const autoExtract = inject('autoExtract', ref(true))
-const lastPastedText = inject('lastPastedText', ref(''))
+const leftLastPasted = ref('')
+const rightLastPasted = ref('')
 const caseInsensitive = ref(false)
 
 const copySuccessLeft = ref(false)
@@ -415,6 +416,8 @@ watch(() => activeTab.value?.rightText, () => {
 
 watch(activeTabId, () => {
   saveComparerState()
+  leftLastPasted.value = ''
+  rightLastPasted.value = ''
 })
 
 watch(() => tabs.value.length, () => {
@@ -423,12 +426,25 @@ watch(() => tabs.value.length, () => {
 
 const autoCopyResult = (text, isLeft) => {
   if (!autoCopy.value || !text) return
-  lastPastedText.value = text.trim()
-  navigator.clipboard.writeText(text).then(() => {
-    if (showToast) {
-      // showToast(`${isLeft ? '原始' : '对比'} JSON 已自动复制到剪贴板`)
-    }
-  })
+  const trimmed = text.trim()
+  if (isLeft) leftLastPasted.value = trimmed
+  else rightLastPasted.value = trimmed
+  
+  if (window.utools && typeof window.utools.copyText === 'function') {
+    window.utools.copyText(text)
+    return
+  }
+  
+  if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke('write_clipboard', { text }).catch(err => {
+        console.error('Tauri clipboard write failed:', err)
+      })
+    })
+    return
+  }
+  
+  navigator.clipboard.writeText(text).catch(() => {})
 }
 
 // Debounced auto-format and key-sorting on text changes in active textareas
@@ -1057,46 +1073,85 @@ const handlePasteRight = () => {
   }
 }
 
-let selectCopyTimer = null
-const copySelectedText = (text) => {
+const copySelectedText = (text, isLeft) => {
   if (!text) return
-  clearTimeout(selectCopyTimer)
-  selectCopyTimer = setTimeout(() => {
-    lastPastedText.value = text.trim()
-    if (window.utools && typeof window.utools.copyText === 'function') {
-      window.utools.copyText(text)
-      if (showToast) showToast('已自动复制选中内容')
-      return
-    }
-    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
-      import('@tauri-apps/api/core').then(({ invoke }) => {
-        invoke('write_clipboard', { text }).then(() => {
-          if (showToast) showToast('已自动复制选中内容')
-        }).catch(err => {
-          console.error('Tauri clipboard write failed:', err)
-        })
+  const trimmed = text.trim()
+  if (isLeft) leftLastPasted.value = trimmed
+  else rightLastPasted.value = trimmed
+  
+  if (window.utools && typeof window.utools.copyText === 'function') {
+    window.utools.copyText(text)
+    if (showToast) showToast('已自动复制双击内容')
+    return
+  }
+  if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke('write_clipboard', { text }).then(() => {
+        if (showToast) showToast('已自动复制双击内容')
+      }).catch(err => {
+        console.error('Tauri clipboard write failed:', err)
       })
-      return
-    }
-    navigator.clipboard.writeText(text).then(() => {
-      if (showToast) showToast('已自动复制选中内容')
     })
-  }, 200)
+    return
+  }
+  navigator.clipboard.writeText(text).then(() => {
+    if (showToast) showToast('已自动复制双击内容')
+  })
 }
 
-const handleSelectLeft = (e) => {
+const handleDblClickLeft = (e) => {
   const el = e.target
   if (el && el.selectionStart !== el.selectionEnd) {
     const text = el.value.substring(el.selectionStart, el.selectionEnd)
-    copySelectedText(text)
+    copySelectedText(text, true)
   }
 }
 
-const handleSelectRight = (e) => {
+const handleDblClickRight = (e) => {
   const el = e.target
   if (el && el.selectionStart !== el.selectionEnd) {
     const text = el.value.substring(el.selectionStart, el.selectionEnd)
-    copySelectedText(text)
+    copySelectedText(text, false)
+  }
+}
+
+const handleCutLeft = (e) => {
+  const el = e.target
+  if (el) {
+    const text = el.value.substring(el.selectionStart, el.selectionEnd)
+    if (text) {
+      leftLastPasted.value = text.trim()
+    }
+  }
+}
+
+const handleCopyLeft = (e) => {
+  const el = e.target
+  if (el) {
+    const text = el.value.substring(el.selectionStart, el.selectionEnd)
+    if (text) {
+      leftLastPasted.value = text.trim()
+    }
+  }
+}
+
+const handleCutRight = (e) => {
+  const el = e.target
+  if (el) {
+    const text = el.value.substring(el.selectionStart, el.selectionEnd)
+    if (text) {
+      rightLastPasted.value = text.trim()
+    }
+  }
+}
+
+const handleCopyRight = (e) => {
+  const el = e.target
+  if (el) {
+    const text = el.value.substring(el.selectionStart, el.selectionEnd)
+    if (text) {
+      rightLastPasted.value = text.trim()
+    }
   }
 }
 
@@ -1119,9 +1174,10 @@ const handleFocus = (isLeft) => {
     const processAutoPaste = (text) => {
       if (!text || !text.trim()) return
       const trimmed = text.trim()
-      if (trimmed === lastPastedText.value) return
+      const lastPasted = isLeft ? leftLastPasted : rightLastPasted
+      if (trimmed === lastPasted.value) return
       
-      lastPastedText.value = trimmed
+      lastPasted.value = trimmed
       if (isLeft) {
         tab.leftText = text
         applyAutoExtract(true)
@@ -1162,7 +1218,7 @@ const handleFocus = (isLeft) => {
     } catch (e) {
       // silently ignore
     }
-  }, 250)
+  }, 50)
 }
 
 // Synchronized scrolling logic for gutters inside textareas
@@ -1635,7 +1691,9 @@ onMounted(() => {
                   @focus="leftFocused = true; handleFocus(true)"
                   @blur="leftFocused = false; stopEditingLeft()"
                   @paste="handlePasteLeft"
-                  @select="handleSelectLeft"
+                  @dblclick="handleDblClickLeft"
+                  @cut="handleCutLeft"
+                  @copy="handleCopyLeft"
                   placeholder=""
                   spellcheck="false"
                 ></textarea>
@@ -1754,7 +1812,9 @@ onMounted(() => {
                   @focus="rightFocused = true; handleFocus(false)"
                   @blur="rightFocused = false; stopEditingRight()"
                   @paste="handlePasteRight"
-                  @select="handleSelectRight"
+                  @dblclick="handleDblClickRight"
+                  @cut="handleCutRight"
+                  @copy="handleCopyRight"
                   placeholder=""
                   spellcheck="false"
                 ></textarea>

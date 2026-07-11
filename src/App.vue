@@ -64,7 +64,6 @@ const autoFormat = ref(true)
 const autoCopy = ref(true)
 const autoExtract = ref(true)
 const autoPaste = ref(true)
-const lastPastedText = ref('')
 
 provide('sortKeys', sortKeys)
 provide('ignoreWhitespace', ignoreWhitespace)
@@ -72,7 +71,6 @@ provide('autoFormat', autoFormat)
 provide('autoCopy', autoCopy)
 provide('autoExtract', autoExtract)
 provide('autoPaste', autoPaste)
-provide('lastPastedText', lastPastedText)
 
 watch(sortKeys, (newVal) => {
   localStorage.setItem('ej_global_sort_keys', String(newVal))
