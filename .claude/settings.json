@@ -71,7 +71,8 @@
       "Bash(osascript -e 'tell application \"System Events\" to set frontmost of process \"easy-json\" to true')",
       "Bash(screencapture -x /tmp/easyjson_screen.png)",
       "Read(//tmp/**)",
-      "Read(//private/tmp/**)"
+      "Read(//private/tmp/**)",
+      "Bash(codesign -dvvv \"/Users/apple/GithubProjects/easy-json/src-tauri/target/universal-apple-darwin/release/bundle/macos/easyJSON.app\")"
     ]
   }
 }

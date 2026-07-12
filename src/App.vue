@@ -20,6 +20,10 @@ const updateDismissed = ref(false)
 const { needsInstall } = useInstallCheck()
 const installDismissed = ref(false)
 
+// ── 来自 Chrome 扩展的传入文本（通过 storage.onChanged 无刷新推送） ──
+const incomingExtractText = ref(null)
+const incomingCompareText = ref(null)
+
 const openInTab = () => {
   const url = chrome.runtime.getURL('index.html?mode=tab')
   chrome.tabs.create({ url })
@@ -71,6 +75,8 @@ provide('autoFormat', autoFormat)
 provide('autoCopy', autoCopy)
 provide('autoExtract', autoExtract)
 provide('autoPaste', autoPaste)
+provide('incomingExtractText', incomingExtractText)
+provide('incomingCompareText', incomingCompareText)
 
 watch(sortKeys, (newVal) => {
   localStorage.setItem('ej_global_sort_keys', String(newVal))
@@ -210,11 +216,15 @@ onMounted(() => {
       const urlParams = new URLSearchParams(window.location.search)
       const isTab = urlParams.get('mode') === 'tab'
       const isExtract = urlParams.get('action') === 'extract'
+      const isCompare = urlParams.get('action') === 'compare'
 
       // Right-click extract: force editor view + format tab
       if (isExtract) {
         currentView.value = 'editor'
         currentTab.value = 'format'
+      } else if (isCompare) {
+        currentView.value = 'editor'
+        currentTab.value = 'compare'
       } else if (isTab) {
         currentView.value = 'editor'
       } else {
@@ -232,9 +242,30 @@ onMounted(() => {
 
     // Detect if running as a Chrome extension popup (not a full tab)
     const isExtension = window.chrome && window.chrome.runtime && window.chrome.runtime.id
-    if (isExtension && !isTab && !isExtract) {
+    if (isExtension && !isTab && !isExtract && !isCompare) {
       document.documentElement.classList.add('popup-mode')
       isPopup.value = true
+    }
+
+    // Chrome 扩展无刷新通信：监听 storage 变化（不重载页面）
+    if (window.chrome?.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== 'local') return
+        if (changes.ej_extract_text?.newValue) {
+          incomingExtractText.value = changes.ej_extract_text.newValue
+          chrome.storage.local.remove('ej_extract_text')
+          currentView.value = 'editor'
+          currentTab.value = 'format'
+          if (window.focus) window.focus()
+        }
+        if (changes.ej_compare_text?.newValue) {
+          incomingCompareText.value = changes.ej_compare_text.newValue
+          chrome.storage.local.remove('ej_compare_text')
+          currentView.value = 'editor'
+          currentTab.value = 'compare'
+          if (window.focus) window.focus()
+        }
+      })
     }
   }
   

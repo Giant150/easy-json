@@ -6,7 +6,7 @@ import {
   AlertTriangle, Braces, Eye, EyeOff, FileJson, ArrowRightLeft, Shuffle,
   ChevronDown, ChevronRight, ChevronUp, HelpCircle, Minimize2, Code, Search, Plus, X,
   Network, Table2, Menu, FileCode, Maximize2, Strikethrough, ListTree,
-  Pencil, ArrowLeft, ArrowRight
+  Pencil, ArrowLeft, ArrowRight, Wand2
 } from 'lucide-vue-next'
 import JsonTreeNode   from './JsonTreeNode.vue'
 import JsonGraphView  from './JsonGraphView.vue'
@@ -23,6 +23,7 @@ const autoFormat = inject('autoFormat', ref(false))
 const autoCopy = inject('autoCopy', ref(false))
 const autoExtract = inject('autoExtract', ref(true))
 const autoPaste = inject('autoPaste', ref(false))
+const incomingExtractText = inject('incomingExtractText', ref(null))
 const formatterLastPasted = ref('')
 
 const copySuccess = ref(false)
@@ -844,10 +845,8 @@ const applyAutoExtract = (tab = activeTab.value) => {
   } catch (e2) {}
 }
 
-// 粘贴时立即尝试智能提取（需开启自动提取）
 const handlePaste = () => {
   if (!autoExtract.value) return
-  // setTimeout 确保 v-model 已更新（比 nextTick 更可靠）
   setTimeout(() => applyAutoExtract(), 50)
 }
 
@@ -882,19 +881,18 @@ const autoCopyResult = (text) => {
     return
   }
   
-  if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
-    import('@tauri-apps/api/core').then(({ invoke }) => {
-      invoke('write_clipboard', { text }).then(() => {
-        showToast('已自动复制到剪贴板')
-      }).catch(err => {
-        console.error('Tauri clipboard write failed:', err)
-      })
-    })
-    return
-  }
-  
   navigator.clipboard.writeText(text).then(() => {
     showToast('已自动复制到剪贴板')
+  }).catch(() => {
+    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+      import('@tauri-apps/api/core').then(({ invoke }) => {
+        invoke('write_clipboard', { text }).then(() => {
+          showToast('已自动复制到剪贴板')
+        }).catch(err => {
+          console.error('Tauri clipboard write failed:', err)
+        })
+      })
+    }
   })
 }
 
@@ -1171,7 +1169,7 @@ const handleTextareaFocus = () => {
     } catch (e) {
       // Clipboard read requires permission or https — silently ignore
     }
-  }, 50)
+  }, 150)
 }
 
 const handleTextareaBlur = (e) => {
@@ -2155,7 +2153,7 @@ onBeforeUnmount(() => {
               <span class="toolbar-label">去转义</span>
             </button>
             <button class="toolbar-item" @click="handleExtract" data-tooltip-bottom="智能提取 JSON">
-              <Search class="toolbar-icon" />
+              <Wand2 class="toolbar-icon" />
               <span class="toolbar-label">提取</span>
             </button>
 

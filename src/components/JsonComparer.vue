@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, nextTick, inject } from 'vue'
 import {
   Split, ArrowRightLeft, RefreshCw, Copy, SlidersHorizontal,
   FileJson, Check, AlertTriangle, Plus, Minus, FileCode, X, Trash2,
-  Pencil, ArrowLeft, ArrowRight
+  Pencil, ArrowLeft, ArrowRight, Wand2, Braces
 } from 'lucide-vue-next'
 import * as diff from 'diff'
 import { useTabsDrag } from '../composables/useTabsDrag'
@@ -17,8 +17,6 @@ const autoFormat = inject('autoFormat', ref(false))
 const autoCopy = inject('autoCopy', ref(false))
 const autoPaste = inject('autoPaste', ref(false))
 const autoExtract = inject('autoExtract', ref(true))
-const leftLastPasted = ref('')
-const rightLastPasted = ref('')
 const caseInsensitive = ref(false)
 
 const copySuccessLeft = ref(false)
@@ -416,8 +414,6 @@ watch(() => activeTab.value?.rightText, () => {
 
 watch(activeTabId, () => {
   saveComparerState()
-  leftLastPasted.value = ''
-  rightLastPasted.value = ''
 })
 
 watch(() => tabs.value.length, () => {
@@ -426,25 +422,21 @@ watch(() => tabs.value.length, () => {
 
 const autoCopyResult = (text, isLeft) => {
   if (!autoCopy.value || !text) return
-  const trimmed = text.trim()
-  if (isLeft) leftLastPasted.value = trimmed
-  else rightLastPasted.value = trimmed
   
   if (window.utools && typeof window.utools.copyText === 'function') {
     window.utools.copyText(text)
     return
   }
   
-  if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
-    import('@tauri-apps/api/core').then(({ invoke }) => {
-      invoke('write_clipboard', { text }).catch(err => {
-        console.error('Tauri clipboard write failed:', err)
+  navigator.clipboard.writeText(text).catch(() => {
+    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+      import('@tauri-apps/api/core').then(({ invoke }) => {
+        invoke('write_clipboard', { text }).catch(err => {
+          console.error('Tauri clipboard write failed:', err)
+        })
       })
-    })
-    return
-  }
-  
-  navigator.clipboard.writeText(text).catch(() => {})
+    }
+  })
 }
 
 // Debounced auto-format and key-sorting on text changes in active textareas
@@ -1033,10 +1025,80 @@ const applyAutoExtract = (isLeft) => {
   } catch (_) {}
 }
 
+const handleExtractLeft = () => {
+  const tab = activeTab.value
+  if (!tab || !tab.leftText) return
+  try {
+    const result = extractJsonFromText(tab.leftText)
+    if (result && result.json !== tab.leftText) {
+      tab.leftText = result.json
+      tab.leftError = null
+      tab.leftErrorLine = null
+      if (showToast) {
+        showToast(result.format !== 'JSON' ? `已从 ${result.format} 提取 JSON` : '已提取 JSON')
+      }
+    } else {
+      if (showToast) showToast('未发现可提取的 JSON')
+    }
+  } catch (err) {
+    if (showToast) showToast('提取失败，请检查输入')
+  }
+}
+
+const handleExtractRight = () => {
+  const tab = activeTab.value
+  if (!tab || !tab.rightText) return
+  try {
+    const result = extractJsonFromText(tab.rightText)
+    if (result && result.json !== tab.rightText) {
+      tab.rightText = result.json
+      tab.rightError = null
+      tab.rightErrorLine = null
+      if (showToast) {
+        showToast(result.format !== 'JSON' ? `已从 ${result.format} 提取 JSON` : '已提取 JSON')
+      }
+    } else {
+      if (showToast) showToast('未发现可提取的 JSON')
+    }
+  } catch (err) {
+    if (showToast) showToast('提取失败，请检查输入')
+  }
+}
+
+const handleFormatLeft = () => {
+  const tab = activeTab.value
+  if (!tab || !tab.leftText) return
+  try {
+    const parsed = JSON.parse(tab.leftText)
+    const formatted = JSON.stringify(sortKeys.value ? sortJSONKeys(parsed, sortKeys.value === 2) : parsed, null, 2)
+    tab.leftText = formatted
+    tab.leftError = null
+    tab.leftErrorLine = null
+    if (showToast) showToast('左侧格式化成功')
+    autoCopyResult(formatted, true)
+  } catch (err) {
+    if (showToast) showToast(`左侧格式化失败: ${err.message}`)
+  }
+}
+
+const handleFormatRight = () => {
+  const tab = activeTab.value
+  if (!tab || !tab.rightText) return
+  try {
+    const parsed = JSON.parse(tab.rightText)
+    const formatted = JSON.stringify(sortKeys.value ? sortJSONKeys(parsed, sortKeys.value === 2) : parsed, null, 2)
+    tab.rightText = formatted
+    tab.rightError = null
+    tab.rightErrorLine = null
+    if (showToast) showToast('右侧格式化成功')
+    autoCopyResult(formatted, false)
+  } catch (err) {
+    if (showToast) showToast(`右侧格式化失败: ${err.message}`)
+  }
+}
+
 const handlePasteLeft = () => {
-  if (autoExtract.value) {
-    setTimeout(() => applyAutoExtract(true), 50)
-  } else if (autoFormat.value) {
+  if (autoFormat.value) {
     setTimeout(() => {
       const tab = activeTab.value
       if (tab && tab.leftText) {
@@ -1054,9 +1116,7 @@ const handlePasteLeft = () => {
 }
 
 const handlePasteRight = () => {
-  if (autoExtract.value) {
-    setTimeout(() => applyAutoExtract(false), 50)
-  } else if (autoFormat.value) {
+  if (autoFormat.value) {
     setTimeout(() => {
       const tab = activeTab.value
       if (tab && tab.rightText) {
@@ -1073,29 +1133,27 @@ const handlePasteRight = () => {
   }
 }
 
-const copySelectedText = (text, isLeft) => {
+const copySelectedText = (text) => {
   if (!text) return
-  const trimmed = text.trim()
-  if (isLeft) leftLastPasted.value = trimmed
-  else rightLastPasted.value = trimmed
   
   if (window.utools && typeof window.utools.copyText === 'function') {
     window.utools.copyText(text)
     if (showToast) showToast('已自动复制双击内容')
     return
   }
-  if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
-    import('@tauri-apps/api/core').then(({ invoke }) => {
-      invoke('write_clipboard', { text }).then(() => {
-        if (showToast) showToast('已自动复制双击内容')
-      }).catch(err => {
-        console.error('Tauri clipboard write failed:', err)
-      })
-    })
-    return
-  }
+  
   navigator.clipboard.writeText(text).then(() => {
     if (showToast) showToast('已自动复制双击内容')
+  }).catch(() => {
+    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
+      import('@tauri-apps/api/core').then(({ invoke }) => {
+        invoke('write_clipboard', { text }).then(() => {
+          if (showToast) showToast('已自动复制双击内容')
+        }).catch(err => {
+          console.error('Tauri clipboard write failed:', err)
+        })
+      })
+    }
   })
 }
 
@@ -1103,7 +1161,7 @@ const handleDblClickLeft = (e) => {
   const el = e.target
   if (el && el.selectionStart !== el.selectionEnd) {
     const text = el.value.substring(el.selectionStart, el.selectionEnd)
-    copySelectedText(text, true)
+    copySelectedText(text)
   }
 }
 
@@ -1111,114 +1169,13 @@ const handleDblClickRight = (e) => {
   const el = e.target
   if (el && el.selectionStart !== el.selectionEnd) {
     const text = el.value.substring(el.selectionStart, el.selectionEnd)
-    copySelectedText(text, false)
+    copySelectedText(text)
   }
 }
 
-const handleCutLeft = (e) => {
-  const el = e.target
-  if (el) {
-    const text = el.value.substring(el.selectionStart, el.selectionEnd)
-    if (text) {
-      leftLastPasted.value = text.trim()
-    }
-  }
-}
-
-const handleCopyLeft = (e) => {
-  const el = e.target
-  if (el) {
-    const text = el.value.substring(el.selectionStart, el.selectionEnd)
-    if (text) {
-      leftLastPasted.value = text.trim()
-    }
-  }
-}
-
-const handleCutRight = (e) => {
-  const el = e.target
-  if (el) {
-    const text = el.value.substring(el.selectionStart, el.selectionEnd)
-    if (text) {
-      rightLastPasted.value = text.trim()
-    }
-  }
-}
-
-const handleCopyRight = (e) => {
-  const el = e.target
-  if (el) {
-    const text = el.value.substring(el.selectionStart, el.selectionEnd)
-    if (text) {
-      rightLastPasted.value = text.trim()
-    }
-  }
-}
-
-// Focus and auto-paste helper
+// Focus helper (auto-paste removed for Comparison Page in Option 2)
 const handleFocus = (isLeft) => {
   activeScrollTarget.value = isLeft ? 'left' : 'right'
-  
-  if (!autoPaste.value) return
-  const tab = activeTab.value
-  if (!tab) return
-  
-  const textVal = isLeft ? tab.leftText : tab.rightText
-  if (textVal && textVal.trim()) return
-
-  // Delay clipboard reading slightly to allow the OS to synchronize the pasteboard
-  setTimeout(async () => {
-    const currentVal = isLeft ? tab.leftText : tab.rightText
-    if (currentVal && currentVal.trim()) return
-
-    const processAutoPaste = (text) => {
-      if (!text || !text.trim()) return
-      const trimmed = text.trim()
-      const lastPasted = isLeft ? leftLastPasted : rightLastPasted
-      if (trimmed === lastPasted.value) return
-      
-      lastPasted.value = trimmed
-      if (isLeft) {
-        tab.leftText = text
-        applyAutoExtract(true)
-      } else {
-        tab.rightText = text
-        applyAutoExtract(false)
-      }
-      if (showToast) showToast('已自动粘贴')
-    }
-
-    // 1. uTools environment
-    if (window.utools && typeof window.utools.readText === 'function') {
-      try {
-        const text = window.utools.readText()
-        processAutoPaste(text)
-      } catch (e) {
-        console.warn('uTools clipboard read failed:', e)
-      }
-      return
-    }
-
-    // 2. Tauri native environment
-    if (window.__TAURI__ || window.__TAURI_INTERNALS__) {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core')
-        const text = await invoke('read_clipboard')
-        processAutoPaste(text)
-      } catch (e) {
-        console.error('Tauri clipboard read failed:', e)
-      }
-      return
-    }
-
-    // 3. Standard Web environment
-    try {
-      const text = await navigator.clipboard.readText()
-      processAutoPaste(text)
-    } catch (e) {
-      // silently ignore
-    }
-  }, 50)
 }
 
 // Synchronized scrolling logic for gutters inside textareas
@@ -1647,6 +1604,26 @@ onMounted(() => {
                 <span>原始 JSON</span>
               </div>
               <div class="header-actions-group" style="margin-left: auto; display: flex; gap: 6px; align-items: center;">
+                <!-- Left Extract Button -->
+                <button 
+                  v-if="activeTab.leftText" 
+                  class="action-btn outline icon-only" 
+                  @click.stop="handleExtractLeft" 
+                  data-tooltip-bottom="提取 JSON"
+                  style="height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; padding: 0;"
+                >
+                  <Wand2 class="btn-icon" />
+                </button>
+                <!-- Left Format Button -->
+                <button 
+                  v-if="activeTab.leftText" 
+                  class="action-btn outline icon-only" 
+                  @click.stop="handleFormatLeft" 
+                  data-tooltip-bottom="格式化 JSON"
+                  style="height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; padding: 0;"
+                >
+                  <Braces class="btn-icon" />
+                </button>
                 <button 
                   v-if="activeTab.leftText" 
                   class="action-btn outline icon-only" 
@@ -1692,8 +1669,6 @@ onMounted(() => {
                   @blur="leftFocused = false; stopEditingLeft()"
                   @paste="handlePasteLeft"
                   @dblclick="handleDblClickLeft"
-                  @cut="handleCutLeft"
-                  @copy="handleCopyLeft"
                   placeholder=""
                   spellcheck="false"
                 ></textarea>
@@ -1768,6 +1743,26 @@ onMounted(() => {
                 >
                   <ArrowRightLeft class="btn-icon" />
                 </button>
+                <!-- Right Extract Button -->
+                <button 
+                  v-if="activeTab.rightText" 
+                  class="action-btn outline icon-only" 
+                  @click.stop="handleExtractRight" 
+                  data-tooltip-bottom="提取 JSON"
+                  style="height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; padding: 0;"
+                >
+                  <Wand2 class="btn-icon" />
+                </button>
+                <!-- Right Format Button -->
+                <button 
+                  v-if="activeTab.rightText" 
+                  class="action-btn outline icon-only" 
+                  @click.stop="handleFormatRight" 
+                  data-tooltip-bottom="格式化 JSON"
+                  style="height: 28px; width: 28px; display: flex; align-items: center; justify-content: center; padding: 0;"
+                >
+                  <Braces class="btn-icon" />
+                </button>
                 <button 
                   v-if="activeTab.rightText" 
                   class="action-btn outline icon-only" 
@@ -1813,8 +1808,6 @@ onMounted(() => {
                   @blur="rightFocused = false; stopEditingRight()"
                   @paste="handlePasteRight"
                   @dblclick="handleDblClickRight"
-                  @cut="handleCutRight"
-                  @copy="handleCopyRight"
                   placeholder=""
                   spellcheck="false"
                 ></textarea>
