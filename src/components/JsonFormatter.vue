@@ -205,7 +205,7 @@ const tabs = ref([
   {
     id: 1,
     title: '格式化 1',
-    inputText: DEMO_JSON,
+    inputText: '',
     outputText: '',
     parsedObj: null,
     validationError: null,
@@ -270,6 +270,30 @@ const closeTab = (id) => {
   tabs.value.splice(index, 1)
   nextTick(checkTabsOverflow)
 }
+
+// 监听来自扩展的无刷新推送文本（右键"智能提取"）
+watch(incomingExtractText, (text) => {
+  if (!text) return
+  const newId = nextTabId++
+  const num = nextDisplayNumber()
+  tabs.value.push({
+    id: newId,
+    title: `格式化 ${num}`,
+    inputText: text,
+    outputText: '',
+    parsedObj: null,
+    validationError: null,
+    errorLine: null,
+    duplicateLines: [],
+    viewMode: 'tree',
+    convertFormat: null,
+    extractedFormat: null
+  })
+  activeTabId.value = newId
+  scrollTabsToEnd()
+  nextTick(() => applyAutoExtract(tabs.value.find(t => t.id === newId)))
+  incomingExtractText.value = null
+})
 
 let canSave = false
 const saveFormatterState = () => {
@@ -350,7 +374,7 @@ const closeAllTabs = () => {
   tabs.value = [{
     id: tabs.value[0].id,
     title: '格式化 1',
-    inputText: getFormattedJsonString(DEMO_JSON),
+    inputText: '',
     outputText: '',
     parsedObj: null,
     validationError: null,
@@ -1989,28 +2013,34 @@ onMounted(() => {
     if (savedTabs) {
       const parsed = JSON.parse(savedTabs)
       if (Array.isArray(parsed) && parsed.length > 0) {
-        tabs.value = parsed.map(t => ({
-          id: t.id,
-          title: t.title,
-          inputText: t.inputText || '',
-          outputText: '',
-          parsedObj: null,
-          validationError: null,
-          errorLine: null,
-          duplicateLines: [],
-          viewMode: t.viewMode || 'text',
-          convertFormat: null,
-          extractedFormat: null
-        }))
-        nextTabId = Math.max(...parsed.map(t => t.id)) + 1
-        activeTabId.value = savedActive ? Number(savedActive) : tabs.value[0].id
-        restored = true
+        // 如果所有保存的 tab 内容都为空，视为首次加载，展示示例数据
+        const hasContent = parsed.some(t => t.inputText && t.inputText.trim())
+        if (!hasContent) {
+          restored = false
+        } else {
+          tabs.value = parsed.map(t => ({
+            id: t.id,
+            title: t.title,
+            inputText: t.inputText || '',
+            outputText: '',
+            parsedObj: null,
+            validationError: null,
+            errorLine: null,
+            duplicateLines: [],
+            viewMode: t.viewMode || 'text',
+            convertFormat: null,
+            extractedFormat: null
+          }))
+          nextTabId = Math.max(...parsed.map(t => t.id)) + 1
+          activeTabId.value = savedActive ? Number(savedActive) : tabs.value[0].id
+          restored = true
+        }
       }
     }
   } catch (e) {}
 
   if (!restored) {
-    loadDemo()
+    // 首次启动为空，不清空已有恢复数据
   }
   canSave = true
   scrollTabsToActive()

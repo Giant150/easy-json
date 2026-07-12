@@ -72,7 +72,8 @@
       "Bash(screencapture -x /tmp/easyjson_screen.png)",
       "Read(//tmp/**)",
       "Read(//private/tmp/**)",
-      "Bash(codesign -dvvv \"/Users/apple/GithubProjects/easy-json/src-tauri/target/universal-apple-darwin/release/bundle/macos/easyJSON.app\")"
+      "Bash(codesign -dvvv \"/Users/apple/GithubProjects/easy-json/src-tauri/target/universal-apple-darwin/release/bundle/macos/easyJSON.app\")",
+      "Bash(node --check /Users/apple/GithubProjects/easy-json/public/background.js)"
     ]
   }
 }

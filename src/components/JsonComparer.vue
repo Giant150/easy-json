@@ -17,6 +17,7 @@ const autoFormat = inject('autoFormat', ref(false))
 const autoCopy = inject('autoCopy', ref(false))
 const autoPaste = inject('autoPaste', ref(false))
 const autoExtract = inject('autoExtract', ref(true))
+const incomingCompareText = inject('incomingCompareText', ref(null))
 const caseInsensitive = ref(false)
 
 const copySuccessLeft = ref(false)
@@ -76,11 +77,11 @@ const DEMO_RIGHT = `{
 
 // Comparison Multi-Tabs State
 const tabs = ref([
-  { 
-    id: 1, 
-    title: '对比 1', 
-    leftText: DEMO_LEFT, 
-    rightText: DEMO_RIGHT, 
+  {
+    id: 1,
+    title: '对比 1',
+    leftText: '',
+    rightText: '',
     leftError: null,
     leftErrorLine: null,
     rightError: null,
@@ -141,6 +142,25 @@ const closeTab = (id) => {
   tabs.value.splice(index, 1)
   nextTick(checkTabsOverflow)
 }
+
+// 监听来自扩展的无刷新推送文本（右键"直接对比"）
+watch(incomingCompareText, (text) => {
+  if (!text) return
+  const newId = nextTabId++
+  tabs.value.push({
+    id: newId,
+    title: `对比 ${newId}`,
+    leftText: text,
+    rightText: '',
+    leftError: null,
+    leftErrorLine: null,
+    rightError: null,
+    rightErrorLine: null
+  })
+  activeTabId.value = newId
+  scrollTabsToEnd()
+  incomingCompareText.value = null
+})
 
 const editingTabId = ref(null)
 
@@ -206,8 +226,8 @@ const closeAllTabs = () => {
   tabs.value = [{
     id: tabs.value[0].id,
     title: '对比 1',
-    leftText: DEMO_LEFT,
-    rightText: DEMO_RIGHT,
+    leftText: '',
+    rightText: '',
     leftError: null,
     leftErrorLine: null,
     rightError: null,
@@ -1499,6 +1519,35 @@ const copyRightText = () => {
   })
 }
 
+// 冷启动：从扩展的右键"直接对比"进入（首次打开无标签页时）
+const checkCompareOnLoad = () => {
+  try {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('action') !== 'compare') return
+    if (!window.chrome?.storage?.local) return
+
+    chrome.storage.local.get('ej_compare_text', (result) => {
+      const text = result?.ej_compare_text
+      if (!text) return
+
+      const newId = nextTabId++
+      tabs.value.push({
+        id: newId,
+        title: `对比 ${newId}`,
+        leftText: text,
+        rightText: '',
+        leftError: null,
+        leftErrorLine: null,
+        rightError: null,
+        rightErrorLine: null
+      })
+      activeTabId.value = newId
+      scrollTabsToEnd()
+      chrome.storage.local.remove('ej_compare_text')
+    })
+  } catch (e) {}
+}
+
 onMounted(() => {
   // Restore persisted tabs from localStorage
   try {
@@ -1507,24 +1556,30 @@ onMounted(() => {
     if (savedTabs) {
       const parsed = JSON.parse(savedTabs)
       if (Array.isArray(parsed) && parsed.length > 0) {
-        tabs.value = parsed.map(t => ({
-          id: t.id,
-          title: t.title,
-          leftText: t.leftText || '',
-          rightText: t.rightText || '',
-          leftError: null,
-          rightError: null
-        }))
-        nextTabId = Math.max(...parsed.map(t => t.id)) + 1
-        activeTabId.value = savedActive ? Number(savedActive) : tabs.value[0].id
-        canSave = true
-        scrollTabsToActive()
-        return
+        // 如果所有保存的 tab 内容都为空，视为首次加载，展示示例数据
+        const hasContent = parsed.some(t => (t.leftText && t.leftText.trim()) || (t.rightText && t.rightText.trim()))
+        if (!hasContent) {
+          // 退回到 loadDemo
+        } else {
+          tabs.value = parsed.map(t => ({
+            id: t.id,
+            title: t.title,
+            leftText: t.leftText || '',
+            rightText: t.rightText || '',
+            leftError: null,
+            rightError: null
+          }))
+          nextTabId = Math.max(...parsed.map(t => t.id)) + 1
+          activeTabId.value = savedActive ? Number(savedActive) : tabs.value[0].id
+          canSave = true
+          scrollTabsToActive()
+          return
+        }
       }
     }
   } catch (e) {}
-  loadDemo()
   canSave = true
+  checkCompareOnLoad()
 })
 </script>
 
