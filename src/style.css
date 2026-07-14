@@ -23,13 +23,13 @@
   --btn-primary-hover: #27272a;
 
   /* Diff colors */
-  --diff-added-bg: #f0fdf4;
-  --diff-added-word-bg: #bbf7d0;
-  --diff-added-border: #86efac;
-  --diff-removed-bg: #fff1f2;
-  --diff-removed-word-bg: #fecdd3;
-  --diff-removed-border: #fda4af;
-  --diff-modified-bg: #fefce8;
+  --diff-added-bg: #dcfce7;
+  --diff-added-word-bg: #86efac;
+  --diff-added-border: #4ade80;
+  --diff-removed-bg: #fee2e2;
+  --diff-removed-word-bg: #fca5a5;
+  --diff-removed-border: #f87171;
+  --diff-modified-bg: #fef9c3;
 
   --error-bg: #fff1f2;
   --error-text: #dc2626;
@@ -81,13 +81,13 @@
   --btn-primary-hover: #cccccc;
 
   /* Diff colors (VSCode dark style) */
-  --diff-added-bg: rgba(35, 134, 54, 0.15);
-  --diff-added-word-bg: rgba(35, 134, 54, 0.4);
-  --diff-added-border: rgba(35, 134, 54, 0.3);
-  --diff-removed-bg: rgba(200, 40, 40, 0.15);
-  --diff-removed-word-bg: rgba(200, 40, 40, 0.4);
-  --diff-removed-border: rgba(200, 40, 40, 0.3);
-  --diff-modified-bg: rgba(200, 150, 0, 0.08);
+  --diff-added-bg: rgba(35, 134, 54, 0.22);
+  --diff-added-word-bg: rgba(35, 134, 54, 0.50);
+  --diff-added-border: rgba(35, 134, 54, 0.40);
+  --diff-removed-bg: rgba(200, 40, 40, 0.22);
+  --diff-removed-word-bg: rgba(200, 40, 40, 0.50);
+  --diff-removed-border: rgba(200, 40, 40, 0.40);
+  --diff-modified-bg: rgba(200, 150, 0, 0.12);
 
   --error-bg: rgba(220, 38, 38, 0.22);
   --error-text: #f48771;

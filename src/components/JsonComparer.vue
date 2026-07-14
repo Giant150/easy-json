@@ -2533,17 +2533,19 @@ onMounted(() => {
 /* Character level word highlighting */
 :deep(.word-added), .word-added {
   background-color: var(--diff-added-word-bg);
-  border-radius: 6px;
-  padding: 1px 0;
+  border-radius: 3px;
+  padding: 1px 2px;
   font-weight: 500;
+  box-shadow: 0 0 0 1px var(--diff-added-border);
 }
 
 :deep(.word-removed), .word-removed {
   background-color: var(--diff-removed-word-bg);
-  border-radius: 6px;
-  padding: 1px 0;
+  border-radius: 3px;
+  padding: 1px 2px;
   font-weight: 500;
   text-decoration: line-through;
+  box-shadow: 0 0 0 1px var(--diff-removed-border);
 }
 
 /* Real-time Diff Highlight in Editor Mode */

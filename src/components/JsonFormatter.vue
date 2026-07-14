@@ -1196,12 +1196,8 @@ const handleTextareaFocus = () => {
   }, 150)
 }
 
-const handleTextareaBlur = (e) => {
+const handleTextareaBlur = () => {
   isTextareaFocused.value = false
-  // 点击导入面板时不重置滚动位置
-  if (!e.relatedTarget || !e.relatedTarget.closest('.import-btn-wrap')) {
-    textareaValue.value = ''
-  }
 }
 
 const handleCut = (e) => {
