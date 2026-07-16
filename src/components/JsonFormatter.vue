@@ -48,7 +48,7 @@ const isTextareaFocused = ref(false)
 const handleImportText = (text) => {
   if (activeTab.value) {
     activeTab.value.inputText = text
-    // 确保不创建新标签页
+    activeTab.value._unsortedText = null
     if (activeTabId.value !== activeTab.value.id) {
       activeTabId.value = activeTab.value.id
     }
@@ -816,6 +816,7 @@ const formatJSON = () => {
     && document.activeElement !== textareaRef.value) {
     formatGuard = true
     tab.inputText = tab.outputText
+    tab._unsortedText = null
     formatGuard = false
   }
 
@@ -984,6 +985,20 @@ const syncGutterScroll = () => {
   }
 }
 
+const scrollToTop = () => {
+  if (textareaRef.value) {
+    textareaRef.value.scrollTop = 0
+    syncGutterScroll()
+  }
+}
+
+const scrollToBottom = () => {
+  if (textareaRef.value) {
+    textareaRef.value.scrollTop = textareaRef.value.scrollHeight
+    syncGutterScroll()
+  }
+}
+
 const handleOutputScroll = () => {
   if (activeScrollTarget.value === 'right') {
     const scrollTop = outputPreRef.value ? outputPreRef.value.scrollTop : 0
@@ -1098,6 +1113,7 @@ const triggerFileUpload = (e) => {
     const reader = new FileReader()
     reader.onload = (event) => {
       activeTab.value.inputText = getFormattedJsonString(event.target.result)
+      activeTab.value._unsortedText = null
       showToast('文件导入成功')
     }
     reader.readAsText(file)
@@ -1111,6 +1127,7 @@ const onDrop = (e) => {
     const reader = new FileReader()
     reader.onload = (event) => {
       activeTab.value.inputText = getFormattedJsonString(event.target.result)
+      activeTab.value._unsortedText = null
       showToast('文件导入成功')
       // 确保不创建新标签页
       if (activeTabId.value !== activeTab.value.id) {
@@ -1156,6 +1173,7 @@ const handleTextareaFocus = () => {
       
       formatterLastPasted.value = trimmed
       tab.inputText = text
+      tab._unsortedText = null
       textareaValue.value = text
       if (autoExtract.value) {
         applyAutoExtract()
@@ -1805,42 +1823,42 @@ const handleEscape = () => {
   if (!tab.inputText.trim()) return
   formatGuard = true
   try {
-    let obj = JSON.parse(tab.inputText)
-    const minified = JSON.stringify(obj)
-    tab.inputText = minified.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-    tab.outputText = tab.inputText
-    tab.parsedObj = null
-    tab.validationError = null
-    tab.errorLine = null
-    indentSize.value = 'minify'
-    showToast('转义成功')
-    autoCopyResult(tab.inputText)
-  } catch (err) {
     try {
-      const jsonStr = convertJsObjectToJson(tab.inputText)
-      const obj = JSON.parse(jsonStr)
+      let obj = JSON.parse(tab.inputText)
       const minified = JSON.stringify(obj)
       tab.inputText = minified.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
       tab.outputText = tab.inputText
       tab.parsedObj = null
       tab.validationError = null
       tab.errorLine = null
-      indentSize.value = 'minify'
       showToast('转义成功')
       autoCopyResult(tab.inputText)
-    } catch (e2) {
-      tab.inputText = tab.inputText.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
-      tab.outputText = tab.inputText
-      tab.parsedObj = null
-      tab.validationError = null
-      tab.errorLine = null
-      indentSize.value = 'minify'
-      showToast('转义成功')
-      autoCopyResult(tab.inputText)
+    } catch (err) {
+      try {
+        const jsonStr = convertJsObjectToJson(tab.inputText)
+        const obj = JSON.parse(jsonStr)
+        const minified = JSON.stringify(obj)
+        tab.inputText = minified.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        tab.outputText = tab.inputText
+        tab.parsedObj = null
+        tab.validationError = null
+        tab.errorLine = null
+        showToast('转义成功')
+        autoCopyResult(tab.inputText)
+      } catch (e2) {
+        tab.inputText = tab.inputText.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+        tab.outputText = tab.inputText
+        tab.parsedObj = null
+        tab.validationError = null
+        tab.errorLine = null
+        showToast('转义成功')
+        autoCopyResult(tab.inputText)
+      }
     }
+  } finally {
+    formatGuard = false
   }
   saveFormatterState()
-  nextTick(() => { formatGuard = false })
 }
 
 // Recursively unescape string values that represent valid JSON objects or arrays
@@ -1935,11 +1953,9 @@ const handleUnescape = () => {
       tab.parsedObj = null
       tab.validationError = null
       tab.errorLine = null
-      indentSize.value = 'minify'
       showToast('去转义成功')
       autoCopyResult(tab.inputText)
       saveFormatterState()
-      nextTick(() => { formatGuard = false })
       return
     }
 
@@ -1957,14 +1973,14 @@ const handleUnescape = () => {
     tab.parsedObj = null
     tab.validationError = null
     tab.errorLine = null
-    indentSize.value = 'minify'
     showToast('去转义成功')
     autoCopyResult(tab.inputText)
   } catch (err) {
     tab.validationError = `去转义失败: ${err.message}`
+  } finally {
+    formatGuard = false
+    saveFormatterState()
   }
-  saveFormatterState()
-  nextTick(() => { formatGuard = false })
 }
 
 const handleExtract = () => {
@@ -1972,14 +1988,7 @@ const handleExtract = () => {
   if (!tab.inputText.trim()) return
   try {
     const result = extractJsonFromText(tab.inputText)
-    // 排序：开启前备份原始文本，关闭后恢复
-    if (sortKeys.value) {
-      if (!tab._unsortedText) tab._unsortedText = result.json
-    } else if (tab._unsortedText) {
-      tab.inputText = tab._unsortedText
-      tab._unsortedText = null
-    }
-    let obj = JSON.parse(sortKeys.value ? result.json : tab.inputText)
+    let obj = JSON.parse(result.json)
     if (sortKeys.value) {
       obj = sortJSONKeys(obj, sortKeys.value === 2)
     }
@@ -2078,6 +2087,7 @@ const checkExtractOnLoad = () => {
         const tab = tabs.value.find(t => t.id === newId)
         if (tab) {
           tab.inputText = text
+          tab._unsortedText = null
           // 与粘贴行为一致：启用自动提取时，替换原始输入为提取后的 JSON
           setTimeout(() => applyAutoExtract(tab), 50)
         }
@@ -2324,6 +2334,16 @@ onBeforeUnmount(() => {
                 @mousemove="handleTextareaMouseMove"
                 @mouseleave="handleTextareaMouseLeave"
               ></textarea>
+              
+              <!-- Floating Scroll Buttons -->
+              <div v-if="activeTab.inputText" class="textarea-scroll-controls">
+                <button class="scroll-control-btn" @click="scrollToTop" data-tooltip-left="回到顶部">
+                  <ChevronUp class="scroll-control-icon" />
+                </button>
+                <button class="scroll-control-btn" @click="scrollToBottom" data-tooltip-left="回到底部">
+                  <ChevronDown class="scroll-control-icon" />
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -3691,5 +3711,51 @@ body.utools-mode {
   justify-content: center;
   height: 100%;
   gap: 8px;
+}
+
+/* 文本框悬浮滚动控制按钮 */
+.textarea-scroll-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.scroll-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  opacity: 0.4;
+  transition: all 0.2s ease;
+}
+
+.scroll-control-btn:hover {
+  opacity: 1;
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  background-color: var(--bg-panel);
+  box-shadow: 0 4px 12px var(--primary-light);
+  transform: translateY(-1px);
+}
+
+.scroll-control-btn:active {
+  transform: translateY(0) scale(0.95);
+}
+
+.scroll-control-icon {
+  width: 14px;
+  height: 14px;
 }
 </style>

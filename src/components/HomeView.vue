@@ -3,7 +3,7 @@ import { ref, onMounted, onBeforeUnmount, computed, inject } from 'vue'
 import {
   Braces, Split, Zap, Lock, ShieldCheck, Eye, ArrowRight,
   ChevronDown, ChevronRight, FileCode, Layers, Table2, Network, ListTree,
-  ClipboardPaste, HelpCircle, Chrome, Laptop, Terminal,
+  ClipboardPaste, HelpCircle, Chrome, Laptop, Terminal, MessageCircle,
   Check, Plus, X, ArrowUpDown, MousePointerClick, RefreshCw,
   Sun, Moon
 } from 'lucide-vue-next'
@@ -36,7 +36,7 @@ const trackDownload = (platform) => {
   }
 }
 
-const emit = defineEmits(['go-to-app', 'go-to-test'])
+const emit = defineEmits(['go-to-app', 'go-to-test', 'go-to-comment'])
 
 const openFaq = ref(null)
 
@@ -469,6 +469,10 @@ onBeforeUnmount(() => {
         <div class="home-nav-links">
           <a href="http://xiaofucode.com" target="_blank" class="home-nav-link">面试专题</a>
           <a href="#contact" class="home-nav-link">联系交流</a>
+          <a class="home-nav-link" @click.prevent="$emit('go-to-comment')" href="#">
+            <MessageCircle :size="15" class="home-nav-link-icon" />
+            评论
+          </a>
         </div>
 
         <!-- Right: CTA + GitHub -->
@@ -1105,7 +1109,7 @@ onBeforeUnmount(() => {
 .dark-mode .home-nav-badge{background:rgba(255,255,255,0.07)}
 .home-nav-sep{display:none}
 .home-nav-links{display:flex;align-items:center;gap:20px;margin-left:24px}
-.home-nav-link{text-decoration:none;font-size:clamp(13px,1vw,15px);font-weight:500;color:var(--text-secondary);transition:color 0.2s;padding:4px 0;letter-spacing:-0.01em}
+.home-nav-link{text-decoration:none;font-size:clamp(13px,1vw,15px);font-weight:500;color:var(--text-secondary);transition:color 0.2s;padding:4px 0;letter-spacing:-0.01em;display:inline-flex;align-items:center;gap:4px}
 .home-nav-link:hover{color:var(--text-primary)}
 .home-nav-right{display:flex;align-items:center;gap:8px;margin-left:auto}
 .home-nav-ghost-btn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;color:var(--text-secondary);background:rgba(0,0,0,0.05);transition:all 0.2s cubic-bezier(0.16,1,0.3,1);text-decoration:none}

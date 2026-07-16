@@ -4,11 +4,12 @@ import JsonFormatter from './components/JsonFormatter.vue'
 import JsonComparer from './components/JsonComparer.vue'
 import HomeView from './components/HomeView.vue'
 import TestView from './components/TestView.vue'
-import { Sun, Moon, Split, Braces, CheckCircle, AlertTriangle, Palette, ArrowUpDown, ArrowUp, ArrowDown, Space, Zap, ClipboardCheck, Search, Home, Maximize, Clipboard, FlaskConical, Download, X } from 'lucide-vue-next'
+import CommentView from './components/Comment.vue'
+import { Sun, Moon, Split, Braces, CheckCircle, AlertTriangle, Palette, ArrowUpDown, ArrowUp, ArrowDown, Space, Zap, ClipboardCheck, Search, Home, Maximize, Clipboard, FlaskConical, Download, X, MessageCircle } from 'lucide-vue-next'
 import { useUpdateCheck } from './composables/useUpdateCheck.js'
 import { useInstallCheck } from './composables/useInstallCheck.js'
 
-const currentView = ref('home') // 'home' | 'editor' | 'test'
+const currentView = ref('home') // 'home' | 'editor' | 'test' | 'comment'
 const isPopup = ref(false)
 const isUtools = ref(false)
 
@@ -50,6 +51,13 @@ const goToTest = () => {
   currentView.value = 'test'
   if (window.location.pathname.replace(/\/$/, '') !== '/test') {
     window.history.pushState(null, '', '/test')
+  }
+}
+
+const goToComment = () => {
+  currentView.value = 'comment'
+  if (window.location.pathname.replace(/\/$/, '') !== '/comment') {
+    window.history.pushState(null, '', '/comment')
   }
 }
 
@@ -190,6 +198,8 @@ const handlePopState = () => {
   const path = window.location.pathname.replace(/\/$/, '')
   if (path === '/test' || path.endsWith('/test')) {
     currentView.value = 'test'
+  } else if (path === '/comment' || path.endsWith('/comment')) {
+    currentView.value = 'comment'
   } else {
     const savedView = localStorage.getItem('ej_view')
     currentView.value = savedView === 'editor' ? 'editor' : 'home'
@@ -212,6 +222,8 @@ onMounted(() => {
     const path = window.location.pathname.replace(/\/$/, '')
     if (path === '/test' || path.endsWith('/test')) {
       currentView.value = 'test'
+    } else if (path === '/comment' || path.endsWith('/comment')) {
+      currentView.value = 'comment'
     } else {
       const urlParams = new URLSearchParams(window.location.search)
       const isTab = urlParams.get('mode') === 'tab'
@@ -364,9 +376,11 @@ onBeforeUnmount(() => {
   </Transition>
 
   <!-- Home Page View -->
-  <HomeView v-if="currentView === 'home'" @go-to-app="goToApp" @go-to-test="goToTest" />
+  <HomeView v-if="currentView === 'home'" @go-to-app="goToApp" @go-to-test="goToTest" @go-to-comment="goToComment" />
 
   <TestView v-else-if="currentView === 'test'" @go-back="goToHome" />
+
+  <CommentView v-else-if="currentView === 'comment'" @go-back="goToHome" />
 
   <!-- Editor View -->
   <div v-else class="app-layout">
@@ -432,6 +446,15 @@ onBeforeUnmount(() => {
         </button>
         <button v-if="isPopup" class="sidebar-btn" @click="openInTab" data-tooltip-right="在新标签页中打开（全屏）">
           <Maximize class="sidebar-btn-icon" />
+        </button>
+        
+        <!-- Neon Breathing Feedback Button -->
+        <button
+          class="sidebar-btn sidebar-btn-neon"
+          @click="goToComment"
+          data-tooltip-right="留言反馈"
+        >
+          <MessageCircle class="sidebar-btn-icon" />
         </button>
       </div>
     </aside>

@@ -73,7 +73,26 @@
       "Read(//tmp/**)",
       "Read(//private/tmp/**)",
       "Bash(codesign -dvvv \"/Users/apple/GithubProjects/easy-json/src-tauri/target/universal-apple-darwin/release/bundle/macos/easyJSON.app\")",
-      "Bash(node --check /Users/apple/GithubProjects/easy-json/public/background.js)"
+      "Bash(node --check /Users/apple/GithubProjects/easy-json/public/background.js)",
+      "Bash(where x86_64-w64-mingw32-windres)",
+      "Read(//c/Users/Administrator/.rustup/toolchains/stable-x86_64-pc-windows-gnu/lib/rustlib/x86_64-pc-windows-gnu/bin/**)",
+      "Bash(ls \"C:/Users/Administrator/.rustup/toolchains/stable-x86_64-pc-windows-gnu/lib/rustlib/x86_64-pc-windows-gnu/bin/\" | head -20)",
+      "Bash(where 7z)",
+      "Bash(where 7za)",
+      "Bash(powershell -Command \"Get-Command Expand-Archive -ErrorAction SilentlyContinue\")",
+      "Bash(printf '@echo off\\\\r\\\\ntype nul > %2\\\\r\\\\n')",
+      "Bash(echo \"exit: $?\")",
+      "Read(//c/Windows/**)",
+      "Bash(windres --version)",
+      "Bash(cmd //c \"where windres\")",
+      "Bash(printf '@echo off\\\\r\\\\necho !^<arch^> > %%2\\\\r\\\\n')",
+      "Bash(cargo clean *)",
+      "Bash(rustup default *)",
+      "Bash(cmd //c \"\\\\\"C:/Program Files/Microsoft Visual Studio/2022/Community/VC/Auxiliary/Build/vcvars64.bat\\\\\" >nul 2>&1 && where link.exe\")",
+      "Bash(cmd //c \"\\\\\"C:/Program Files \\(x86\\)/Microsoft Visual Studio/2022/BuildTools/VC/Auxiliary/Build/vcvars64.bat\\\\\" >nul 2>&1 && where link.exe\")",
+      "Bash(cmd //c \"where link.exe\")",
+      "Read(//c/Users/Administrator/.rustup/toolchains/stable-x86_64-pc-windows-gnu/lib/rustlib/x86_64-pc-windows-gnu/bin/self-contained/**)",
+      "Bash(rustup component *)"
     ]
   }
 }

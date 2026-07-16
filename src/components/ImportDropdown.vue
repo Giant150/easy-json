@@ -343,11 +343,15 @@ const handleCurl = async () => {
     console.log('========== 开始处理 curl 命令 ==========')
     const { url, method, headers, body } = parseCurl(curlInput.value)
 
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+
     const opts = {
       method,
       headers: { ...headers },
       mode: 'cors',
-      credentials: 'omit'
+      credentials: 'omit',
+      signal: controller.signal
     }
 
     if (body && method !== 'GET') {
@@ -357,6 +361,7 @@ const handleCurl = async () => {
     console.log('发送请求:', { url, method, headersCount: Object.keys(headers).length, hasBody: !!body })
 
     const res = await fetch(url, opts)
+    clearTimeout(timeoutId)
     console.log('响应状态:', res.status, res.statusText)
 
     const text = await res.text()
@@ -373,7 +378,9 @@ const handleCurl = async () => {
   } catch (e) {
     console.error('curl 请求失败:', e)
 
-    if (e.message.includes('Failed to fetch')) {
+    if (e.name === 'AbortError') {
+      showToast('请求超时（30 秒）', 'error')
+    } else if (e.message.includes('Failed to fetch')) {
       showToast('请求失败：CORS 跨域限制，请直接在 Network 面板复制响应数据', 'error')
     } else {
       showToast(e.message || '请求失败', 'error')
@@ -402,7 +409,10 @@ const handleUrl = async () => {
     const url = urlInput.value.startsWith('http') ? urlInput.value : 'https://' + urlInput.value
     console.log('发送请求到:', url)
 
-    const res = await fetch(url)
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000)
+    const res = await fetch(url, { signal: controller.signal })
+    clearTimeout(timeoutId)
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
 
     const text = await res.text()
@@ -412,7 +422,9 @@ const handleUrl = async () => {
   } catch (e) {
     console.error('请求失败:', e)
 
-    if (e.message.includes('Failed to fetch')) {
+    if (e.name === 'AbortError') {
+      showToast('请求超时（30 秒）', 'error')
+    } else if (e.message.includes('Failed to fetch')) {
       showToast('请求失败：CORS 跨域限制，请直接在 Network 面板复制响应数据', 'error')
     } else {
       showToast(e.message || '请求失败', 'error')

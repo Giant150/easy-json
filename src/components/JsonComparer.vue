@@ -3,7 +3,7 @@ import { ref, computed, watch, onMounted, nextTick, inject } from 'vue'
 import {
   Split, ArrowRightLeft, RefreshCw, Copy, SlidersHorizontal,
   FileJson, Check, AlertTriangle, Plus, Minus, FileCode, X, Trash2,
-  Pencil, ArrowLeft, ArrowRight, Wand2, Braces
+  Pencil, ArrowLeft, ArrowRight, Wand2, Braces, ChevronUp, ChevronDown
 } from 'lucide-vue-next'
 import * as diff from 'diff'
 import { useTabsDrag } from '../composables/useTabsDrag'
@@ -1257,6 +1257,34 @@ const handleRightTextareaScroll = () => {
   }
 }
 
+const scrollLeftToTop = () => {
+  if (leftTextareaRef.value) {
+    leftTextareaRef.value.scrollTop = 0
+    handleLeftTextareaScroll()
+  }
+}
+
+const scrollLeftToBottom = () => {
+  if (leftTextareaRef.value) {
+    leftTextareaRef.value.scrollTop = leftTextareaRef.value.scrollHeight
+    handleLeftTextareaScroll()
+  }
+}
+
+const scrollRightToTop = () => {
+  if (rightTextareaRef.value) {
+    rightTextareaRef.value.scrollTop = 0
+    handleRightTextareaScroll()
+  }
+}
+
+const scrollRightToBottom = () => {
+  if (rightTextareaRef.value) {
+    rightTextareaRef.value.scrollTop = rightTextareaRef.value.scrollHeight
+    handleRightTextareaScroll()
+  }
+}
+
 // Transition functions for editing state with scroll preservation
 const startEditingLeft = () => {
   if (leftEditing.value) return
@@ -1727,6 +1755,16 @@ onMounted(() => {
                   placeholder=""
                   spellcheck="false"
                 ></textarea>
+                
+                <!-- Floating Scroll Buttons -->
+                <div v-if="activeTab.leftText" class="textarea-scroll-controls">
+                  <button class="scroll-control-btn" @click.stop="scrollLeftToTop" data-tooltip-left="回到顶部">
+                    <ChevronUp class="scroll-control-icon" />
+                  </button>
+                  <button class="scroll-control-btn" @click.stop="scrollLeftToBottom" data-tooltip-left="回到底部">
+                    <ChevronDown class="scroll-control-icon" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -1866,6 +1904,16 @@ onMounted(() => {
                   placeholder=""
                   spellcheck="false"
                 ></textarea>
+                
+                <!-- Floating Scroll Buttons -->
+                <div v-if="activeTab.rightText" class="textarea-scroll-controls">
+                  <button class="scroll-control-btn" @click.stop="scrollRightToTop" data-tooltip-left="回到顶部">
+                    <ChevronUp class="scroll-control-icon" />
+                  </button>
+                  <button class="scroll-control-btn" @click.stop="scrollRightToBottom" data-tooltip-left="回到底部">
+                    <ChevronDown class="scroll-control-icon" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -2620,4 +2668,49 @@ onMounted(() => {
   }
 }
 
+/* 文本框悬浮滚动控制按钮 */
+.textarea-scroll-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 10;
+  pointer-events: auto;
+}
+
+.scroll-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  opacity: 0.4;
+  transition: all 0.2s ease;
+}
+
+.scroll-control-btn:hover {
+  opacity: 1;
+  color: var(--primary-color);
+  border-color: var(--primary-color);
+  background-color: var(--bg-panel);
+  box-shadow: 0 4px 12px var(--primary-light);
+  transform: translateY(-1px);
+}
+
+.scroll-control-btn:active {
+  transform: translateY(0) scale(0.95);
+}
+
+.scroll-control-icon {
+  width: 14px;
+  height: 14px;
+}
 </style>
